@@ -31,7 +31,14 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**AI Employee Specific Gates:**
+- ✅ Local-first architecture confirmed (no external data transmission)
+- ✅ Human-in-the-loop workflows designed for >$50 payments and bulk actions
+- ✅ Audit logging strategy defined for all system actions
+- ✅ Graceful degradation paths identified for component failures
+- ✅ Credential storage plan compliant with .env-only requirement
+- ✅ Decision boundaries established for auto-approval vs human approval
+- ✅ Ethical boundaries defined for prohibited autonomous actions
 
 ## Project Structure
 
