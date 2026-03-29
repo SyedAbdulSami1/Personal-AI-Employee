@@ -1,0 +1,197 @@
+openapi: 3.0.3
+info:
+  title: Browser MCP Server
+  description: Playwright browser automation via MCP
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+    description: Local MCP server
+
+paths:
+  /browser/navigate:
+    post:
+      operationId: navigate
+      summary: Navigate to a URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NavigateRequest'
+      responses:
+        '200':
+          description: Navigation successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavigateResponse'
+
+  /browser/click:
+    post:
+      operationId: click
+      summary: Click an element
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClickRequest'
+      responses:
+        '200':
+          description: Click successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserResponse'
+
+  /browser/fill:
+    post:
+      operationId: fill
+      summary: Fill a form field
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FillRequest'
+      responses:
+        '200':
+          description: Fill successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserResponse'
+
+  /browser/screenshot:
+    post:
+      operationId: screenshot
+      summary: Take a screenshot
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreenshotRequest'
+      responses:
+        '200':
+          description: Screenshot captured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreenshotResponse'
+
+  /browser/evaluate:
+    post:
+      operationId: evaluate
+      summary: Execute JavaScript in page context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
+      responses:
+        '200':
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResponse'
+
+components:
+  schemas:
+    NavigateRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+
+    NavigateResponse:
+      type: object
+      required:
+        - success
+        - title
+      properties:
+        success:
+          type: boolean
+        title:
+          type: string
+        error:
+          type: string
+
+    ClickRequest:
+      type: object
+      required:
+        - selector
+      properties:
+        selector:
+          type: string
+          description: CSS selector for the element
+
+    FillRequest:
+      type: object
+      required:
+        - selector
+        - value
+      properties:
+        selector:
+          type: string
+          description: CSS selector for the input field
+        value:
+          type: string
+
+    ScreenshotRequest:
+      type: object
+      properties:
+        full_page:
+          type: boolean
+          default: false
+
+    ScreenshotResponse:
+      type: object
+      required:
+        - success
+        - screenshot
+      properties:
+        success:
+          type: boolean
+        screenshot:
+          type: string
+          description: Base64-encoded PNG image
+        error:
+          type: string
+
+    EvaluateRequest:
+      type: object
+      required:
+        - script
+      properties:
+        script:
+          type: string
+          description: JavaScript code to execute
+
+    EvaluateResponse:
+      type: object
+      required:
+        - success
+        - result
+      properties:
+        success:
+          type: boolean
+        result:
+          type: object
+          description: JavaScript evaluation result
+        error:
+          type: string
+
+    BrowserResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string

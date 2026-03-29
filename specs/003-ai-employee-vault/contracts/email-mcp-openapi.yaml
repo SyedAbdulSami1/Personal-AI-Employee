@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: Email MCP Server
+  description: Gmail operations via MCP (Model Context Protocol)
+  version: 1.0.0
+  contact:
+    name: Personal AI Employee
+servers:
+  - url: http://localhost:3000
+    description: Local MCP server
+
+paths:
+  /email/send:
+    post:
+      operationId: send_email
+      summary: Send an email via Gmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+      responses:
+        '200':
+          description: Email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendEmailResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Authentication failed
+        '429':
+          description: Rate limit exceeded
+
+  /email/draft:
+    post:
+      operationId: draft_email
+      summary: Create a draft email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftEmailRequest'
+      responses:
+        '200':
+          description: Draft created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftEmailResponse'
+
+  /email/search:
+    post:
+      operationId: search_emails
+      summary: Search Gmail messages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchEmailsRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchEmailsResponse'
+
+components:
+  schemas:
+    SendEmailRequest:
+      type: object
+      required:
+        - to
+        - subject
+        - body
+      properties:
+        to:
+          type: string
+          format: email
+          description: Recipient email address
+        subject:
+          type: string
+          maxLength: 200
+        body:
+          type: string
+          description: Email body (plain text or HTML)
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        attachment:
+          type: string
+          description: Absolute path to attachment file
+
+    SendEmailResponse:
+      type: object
+      required:
+        - success
+        - message_id
+      properties:
+        success:
+          type: boolean
+        message_id:
+          type: string
+        error:
+          type: string
+
+    DraftEmailRequest:
+      type: object
+      required:
+        - to
+        - subject
+        - body
+      properties:
+        to:
+          type: string
+          format: email
+        subject:
+          type: string
+        body:
+          type: string
+        attachment:
+          type: string
+          description: Absolute path to attachment file
+
+    DraftEmailResponse:
+      type: object
+      required:
+        - success
+        - draft_id
+      properties:
+        success:
+          type: boolean
+        draft_id:
+          type: string
+        error:
+          type: string
+
+    SearchEmailsRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: Gmail search query (e.g., "is:unread is:important")
+        max_results:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 100
+
+    SearchEmailsResponse:
+      type: object
+      required:
+        - success
+        - emails
+      properties:
+        success:
+          type: boolean
+        emails:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmailSummary'
+        error:
+          type: string
+
+    EmailSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        from:
+          type: string
+        date:
+          type: string
+          format: date-time
+        snippet:
+          type: string
+          maxLength: 200

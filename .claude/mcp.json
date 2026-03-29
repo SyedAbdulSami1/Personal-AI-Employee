@@ -1,0 +1,24 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "type": "builtin"
+    },
+    {
+      "name": "email",
+      "command": "node",
+      "args": ["D:/D Data/Personal AI Employee Hackathon/node_modules/.bin/email-mcp"],
+      "env": {
+        "GMAIL_CREDENTIALS": "D:/D Data/Personal AI Employee Hackathon/credentials/gmail_credentials.json"
+      }
+    },
+    {
+      "name": "browser",
+      "command": "npx",
+      "args": ["@anthropic/browser-mcp"],
+      "env": {
+        "HEADLESS": "true"
+      }
+    }
+  ]
+}
