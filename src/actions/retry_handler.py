@@ -1,98 +1,144 @@
 """
-Retry handler with exponential backoff for external service calls.
+RetryHandler — Exponential backoff retry decorator for external API calls.
+All external calls (API, network, file I/O) must use this decorator.
 """
-import functools
 import logging
-import random
 import time
-from typing import Callable, Type, Tuple, Union
+from functools import wraps
+from typing import Callable, Any, Tuple, Type
 
 logger = logging.getLogger(__name__)
+
+
+# Default retryable exceptions
+DEFAULT_RETRYABLE_EXCEPTIONS = (
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 
 def with_retry(
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
-    exponential_base: float = 2.0,
-    jitter: bool = True,
-    exceptions: Union[Type[Exception], Tuple[Type[Exception], ...]] = Exception
+    retryable_exceptions: Tuple[Type[Exception], ...] = DEFAULT_RETRYABLE_EXCEPTIONS,
+    log_level: int = logging.WARNING
 ):
     """
-    Decorator that adds retry logic with exponential backoff.
+    Decorator for exponential backoff retry logic.
+
+    Usage:
+        @with_retry(max_attempts=3, base_delay=1, max_delay=60)
+        def call_external_api():
+            ...
 
     Args:
-        max_attempts: Maximum number of attempts (including initial try)
-        base_delay: Initial delay in seconds
-        max_delay: Maximum delay in seconds
-        exponential_base: Base for exponential backoff calculation
-        jitter: Whether to add random jitter to delay
-        exceptions: Exception type(s) to catch and retry on
+        max_attempts: Maximum number of retry attempts (total = 1 + retries)
+        base_delay: Initial delay in seconds (1s)
+        max_delay: Maximum delay cap (60s)
+        retryable_exceptions: Tuple of exception types to retry on
+        log_level: Logging level for retry attempts (WARNING by default)
+
+    Returns:
+        Decorated function with retry logic
     """
     def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
             last_exception = None
 
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except exceptions as e:
+
+                except retryable_exceptions as e:
                     last_exception = e
 
-                    # If this was the last attempt, don't retry
                     if attempt == max_attempts - 1:
-                        logger.warning(
-                            f"Function {func.__name__} failed after {max_attempts} attempts. "
-                            f"Last error: {e}"
+                        # Last attempt failed
+                        logger.error(
+                            f"{func.__name__}: Max retries ({max_attempts}) exceeded. Last error: {e}",
+                            exc_info=True
                         )
-                        break
+                        raise
 
                     # Calculate delay with exponential backoff
-                    delay = min(
-                        base_delay * (exponential_base ** attempt),
-                        max_delay
-                    )
+                    delay = min(base_delay * (2 ** attempt), max_delay)
 
-                    # Add jitter if enabled
-                    if jitter:
-                        delay *= (0.5 + random.random() * 0.5)  # 0.5 to 1.0 multiplier
-
-                    logger.info(
-                        f"Attempt {attempt + 1} failed for {func.__name__}: {e}. "
-                        f"Retrying in {delay:.2f} seconds..."
+                    logger.log(
+                        log_level,
+                        f"{func.__name__}: Attempt {attempt + 1}/{max_attempts} failed. "
+                        f"Retrying in {delay:.1f}s. Error: {e}"
                     )
 
                     time.sleep(delay)
 
-            # If we got here, all retries exhausted
-            raise last_exception
+                except Exception as e:
+                    # Non-retryable exception - log and re-raise immediately
+                    logger.error(f"{func.__name__}: Non-retryable error: {e}", exc_info=True)
+                    raise
+
+            # Should never reach here, but just in case
+            if last_exception:
+                raise last_exception
 
         return wrapper
     return decorator
 
 
-# Convenience decorators for common use cases
-def with_retry_network(max_attempts: int = 3):
-    """Retry decorator for network-related failures."""
-    import requests
+# Convenience decorator for rate limit errors
+def with_rate_limit_retry(
+    max_attempts: int = 5,
+    base_delay: float = 2.0,
+    max_delay: float = 300.0  # 5 minutes
+):
+    """
+    Specialized retry decorator for API rate limiting.
+    Longer delays suitable for 429 Too Many Requests responses.
+
+    Usage:
+        @with_rate_limit_retry
+        def call_rate_limited_api():
+            ...
+    """
     return with_retry(
         max_attempts=max_attempts,
-        base_delay=1.0,
-        max_delay=30.0,
-        exceptions=(
-            ConnectionError,
-            TimeoutError,
-            # Add requests exceptions if available
-        )
+        base_delay=base_delay,
+        max_delay=max_delay,
+        log_level=logging.INFO
     )
 
 
-def with_retry_api(max_attempts: int = 3):
-    """Retry decorator for API-related failures."""
-    return with_retry(
-        max_attempts=max_attempts,
-        base_delay=2.0,
-        max_delay=60.0,
-        exceptions=Exception  # Retry on any exception for APIs
-    )
+# Decorator for authentication errors (no retry, just alert)
+def no_retry_on_auth_error(func: Callable) -> Callable:
+    """
+    Decorator that logs authentication errors without retrying.
+    Use for 401/403 responses where retry won't help.
+
+    Usage:
+        @no_retry_on_auth_error
+        def call_auth_required_api():
+            ...
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> Any:
+        try:
+            return func(*args, **kwargs)
+
+        except Exception as e:
+            error_str = str(e).lower()
+
+            # Check for auth-related errors
+            if any(indicator in error_str for indicator in ['401', '403', 'unauthorized', 'forbidden', 'authentication']):
+                logger.error(
+                    f"{func.__name__}: Authentication error (no retry): {e}",
+                    exc_info=True
+                )
+                # Re-raise for caller to handle (should create ALERT file)
+                raise
+            else:
+                # Non-auth error - re-raise normally
+                raise
+
+    return wrapper

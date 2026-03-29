@@ -1,160 +1,167 @@
 """
-Audit logging system for the Personal AI Employee.
-Logs all actions to daily JSON files with 90-day retention.
+AuditLogger — Structured JSON logging for all AI Employee actions.
+Writes to /Vault/Logs/YYYY-MM-DD.json with 90-day retention.
 """
-import json
 import logging
-import os
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class AuditLogger:
-    """Singleton audit logger for tracking all system actions."""
+    """Singleton audit logger for structured action logging."""
 
-    _instance = None
+    _instance: Optional['AuditLogger'] = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, logs_path: Path) -> 'AuditLogger':
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, config=None):
-        # Prevent re-initialization
-        if hasattr(self, '_initialized'):
+    def __init__(self, logs_path: Path):
+        if self._initialized:
             return
 
-        self.config = config or self._load_config_from_env()
-        self._ensure_log_directory()
-        self._cleanup_old_logs()
+        self.logs_path = logs_path
+        self.logs_path.mkdir(parents=True, exist_ok=True)
         self._initialized = True
 
-    def _load_config_from_env(self):
-        """Load config from environment if not provided."""
-        from src.config import config as global_config
-        return global_config
+        # Enforce 90-day retention
+        self._cleanup_old_logs()
 
-    def _ensure_log_directory(self):
-        """Ensure the logs directory exists."""
-        self.config.logs_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[AuditLogger] Initialized with logs path: {logs_path}")
 
-    def _get_log_file_path(self, date: Optional[datetime] = None) -> Path:
-        """Get the log file path for a given date (defaults to today)."""
-        if date is None:
-            date = datetime.now()
-        date_str = date.strftime("%Y-%m-%d")
-        return self.config.logs_path / f"{date_str}.json"
+    def _get_today_file(self) -> Path:
+        """Get today's log file path."""
+        today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        return self.logs_path / f"{today}.json"
 
-    def _cleanup_old_logs(self):
+    def _cleanup_old_logs(self) -> None:
         """Delete log files older than 90 days."""
-        cutoff_date = datetime.now() - timedelta(days=90)
-        log_files = self.config.logs_path.glob("*.json")
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=90)
 
-        for log_file in log_files:
-            try:
-                # Extract date from filename (YYYY-MM-DD.json)
-                date_str = log_file.stem
-                file_date = datetime.strptime(date_str, "%Y-%m-%d")
-                if file_date < cutoff_date:
-                    log_file.unlink()
-                    logger.info(f"Deleted old audit log: {log_file.name}")
-            except ValueError:
-                # Skip files that don't match date format
-                continue
+            for log_file in self.logs_path.glob("*.json"):
+                try:
+                    # Parse date from filename (YYYY-MM-DD.json)
+                    date_str = log_file.stem
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+
+                    if file_date < cutoff:
+                        log_file.unlink()
+                        logger.debug(f"Deleted old log: {log_file.name}")
+
+                except Exception as e:
+                    logger.warning(f"Could not process log file {log_file.name}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up old logs: {e}")
 
     def log_action(
         self,
         action_type: str,
         actor: str,
-        target: str = "",
+        target: str,
         parameters: Optional[Dict[str, Any]] = None,
-        approval_status: str = "unknown",
-        result: str = "unknown",
+        approval_status: str = "none",
+        approved_by: str = "none",
+        result: str = "success",
         error: Optional[str] = None,
-        dry_run: bool = None
+        dry_run: bool = False
     ) -> None:
         """
-        Log an action to the daily audit log.
+        Log an action to today's JSON audit log.
 
         Args:
-            action_type: Type of action performed (e.g., 'email_send', 'file_move')
-            actor: Who performed the action (e.g., 'claude_code', 'gmail_watcher')
-            target: Target of the action (e.g., recipient email, file path)
-            parameters: Additional parameters for the action
-            approval_status: 'human_approved', 'human_rejected', 'auto_approved', etc.
-            result: 'success', 'failure', 'pending', etc.
-            error: Error message if action failed
-            dry_run: Whether this was a dry run (uses config if None)
+            action_type: Type of action (email_send, payment, file_move, watcher_start, error, etc.)
+            actor: Who performed the action (qwen_agent, gmail_watcher, whatsapp_watcher, human)
+            target: What the action targeted (recipient, file path, platform)
+            parameters: Additional action parameters (dict)
+            approval_status: none, human_approved, system_approved
+            approved_by: human, system, none
+            result: success, failure, dry_run, skipped
+            error: Error message if result=failure
+            dry_run: Whether this was a dry run
         """
-        if parameters is None:
-            parameters = {}
-
-        if dry_run is None:
-            dry_run = self.config.dry_run
-
-        log_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "action_type": action_type,
-            "actor": actor,
-            "target": target,
-            "parameters": parameters,
-            "approval_status": approval_status,
-            "result": result,
-            "error": error,
-            "dry_run": dry_run
-        }
-
-        log_file = self._get_log_file_path()
-
         try:
-            # Read existing logs or start fresh
-            if log_file.exists():
-                with open(log_file, 'r') as f:
-                    try:
-                        logs = json.load(f)
-                        if not isinstance(logs, list):
-                            logs = []
-                    except json.JSONDecodeError:
-                        logs = []
-            else:
-                logs = []
+            entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "action_type": action_type,
+                "actor": actor,
+                "target": target,
+                "parameters": parameters or {},
+                "approval_status": approval_status,
+                "approved_by": approved_by,
+                "result": result,
+                "error": error,
+                "dry_run": dry_run
+            }
 
-            # Append new log entry
-            logs.append(log_entry)
+            log_file = self._get_today_file()
 
-            # Write back to file
-            with open(log_file, 'w') as f:
-                json.dump(logs, f, indent=2, default=str)
+            # Append as JSON line (JSONL format)
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry) + '\n')
 
-            logger.debug(f"Logged action: {action_type} by {actor}")
+            logger.debug(f"Audit log entry written to {log_file.name}")
 
         except Exception as e:
-            logger.error(f"Failed to write audit log: {e}")
-            # Fallback to stderr logging
-            print(f"AUDIT LOG ERROR: {log_entry}")
+            logger.error(f"Failed to write audit log: {e}", exc_info=True)
 
-    def get_recent_actions(self, limit: int = 50) -> list:
-        """Get recent actions from today's log."""
-        log_file = self._get_log_file_path()
+    def get_today_logs(self) -> list:
+        """Read all log entries from today."""
+        log_file = self._get_today_file()
 
         if not log_file.exists():
             return []
 
+        entries = []
         try:
-            with open(log_file, 'r') as f:
-                logs = json.load(f)
-                return logs[-limit:] if isinstance(logs, list) else []
-        except (json.JSONDecodeError, FileNotFoundError):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        entries.append(json.loads(line))
+
+        except Exception as e:
+            logger.error(f"Failed to read audit logs: {e}")
+
+        return entries
+
+    def get_actions_by_type(self, action_type: str, date: Optional[str] = None) -> list:
+        """
+        Get all actions of a specific type.
+
+        Args:
+            action_type: Type to filter by
+            date: YYYY-MM-DD format (defaults to today)
+
+        Returns:
+            List of matching log entries
+        """
+        if date is None:
+            return [e for e in self.get_today_logs() if e.get('action_type') == action_type]
+
+        log_file = self.logs_path / f"{date}.json"
+
+        if not log_file.exists():
             return []
 
-    def get_actions_by_type(self, action_type: str, limit: int = 100) -> list:
-        """Get actions of a specific type from today's log."""
-        all_actions = self.get_recent_actions(limit=1000)  # Get more to filter
-        return [action for action in all_actions if action.get("action_type") == action_type][:limit]
+        entries = []
+        try:
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        entry = json.loads(line)
+                        if entry.get('action_type') == action_type:
+                            entries.append(entry)
 
+        except Exception as e:
+            logger.error(f"Failed to read audit logs: {e}")
 
-# Global audit logger instance
-audit_logger = AuditLogger()
+        return entries

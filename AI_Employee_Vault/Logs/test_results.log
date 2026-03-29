@@ -1,0 +1,110 @@
+2026-03-29 11:54:49,342 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,342 [__main__] INFO — COMPONENT TEST SUITE - STEP 4
+2026-03-29 11:54:49,342 [__main__] INFO — Testing all components as per implementation plan
+2026-03-29 11:54:49,342 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,342 [__main__] INFO — Dry Run Mode: True
+2026-03-29 11:54:49,342 [__main__] INFO — Vault Path: AI_Employee_Vault
+2026-03-29 11:54:49,342 [__main__] INFO — Log Path: AI_Employee_Vault\Logs
+2026-03-29 11:54:49,358 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,358 [__main__] INFO — TEST 1: Vault Read Test
+2026-03-29 11:54:49,358 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,436 [__main__] INFO — Cleaned up test file: test_component_001.md
+2026-03-29 11:54:49,436 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,452 [__main__] INFO — TEST 2: Gmail Watcher Dry-Run Test
+2026-03-29 11:54:49,452 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,452 [__main__] INFO —   Interval: 120s
+2026-03-29 11:54:49,452 [__main__] INFO —   Dry run: True
+2026-03-29 11:54:49,452 [__main__] INFO —   Running simulated email check...
+2026-03-29 11:54:49,468 [src.watchers.base_watcher.GmailWatcher] INFO — [DRY RUN] Simulating Gmail check
+2026-03-29 11:54:49,468 [src.watchers.base_watcher.GmailWatcher] INFO — [DRY RUN] Simulating email detection
+2026-03-29 11:54:49,468 [src.watchers.base_watcher.GmailWatcher] INFO — [DRY RUN] Would create action file: 20260329_115449_test_at_example_com_Test_email_from_Gmail_watcher.md
+2026-03-29 11:54:49,468 [__main__] INFO —   Check result: True
+2026-03-29 11:54:49,483 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,483 [__main__] INFO — TEST 3: Filesystem Watcher Test
+2026-03-29 11:54:49,483 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,499 [__main__] INFO —   Processing file drop...
+2026-03-29 11:54:49,499 [src.watchers.base_watcher.FilesystemWatcher] INFO — [DRY RUN] Would create action file: 20260329_115449_file_test_drop.txt.md
+2026-03-29 11:54:49,499 [src.watchers.base_watcher.FilesystemWatcher] INFO — Created action file for dropped file: test_drop.txt
+2026-03-29 11:54:49,499 [__main__] INFO —   [DRY RUN] No file written (expected)
+2026-03-29 11:54:49,514 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,514 [__main__] INFO — TEST 4: Approval Workflow Test
+2026-03-29 11:54:49,514 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,577 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,577 [__main__] INFO — TEST 5: Audit Logging Test
+2026-03-29 11:54:49,577 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,577 [__main__] INFO —   Performing test action...
+2026-03-29 11:54:49,592 [src.actions.audit_logger] DEBUG — Logged action: component_test by test_suite
+2026-03-29 11:54:49,719 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,719 [__main__] INFO — TEST 6: Orchestrator Test
+2026-03-29 11:54:49,719 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,735 [__main__] INFO —   Watching: AI_Employee_Vault\Needs_Action
+2026-03-29 11:54:49,750 [__main__] INFO —   Folder exists: True
+2026-03-29 11:54:49,750 [__main__] INFO — 
+======================================================================
+2026-03-29 11:54:49,766 [__main__] INFO — TEST SUMMARY
+2026-03-29 11:54:49,766 [__main__] INFO — ======================================================================
+2026-03-29 11:54:49,844 [__main__] INFO — 
+Total: 5/6 tests passed
+2026-03-29 11:54:49,860 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,784 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,799 [__main__] INFO — COMPONENT TEST SUITE - STEP 4
+2026-03-29 11:56:06,799 [__main__] INFO — Testing all components as per implementation plan
+2026-03-29 11:56:06,799 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,799 [__main__] INFO — Dry Run Mode: True
+2026-03-29 11:56:06,799 [__main__] INFO — Vault Path: AI_Employee_Vault
+2026-03-29 11:56:06,799 [__main__] INFO — Log Path: AI_Employee_Vault\Logs
+2026-03-29 11:56:06,799 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,799 [__main__] INFO — TEST 1: Vault Read Test
+2026-03-29 11:56:06,799 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,840 [__main__] INFO — Cleaned up test file: test_component_001.md
+2026-03-29 11:56:06,840 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,840 [__main__] INFO — TEST 2: Gmail Watcher Dry-Run Test
+2026-03-29 11:56:06,840 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,840 [__main__] INFO —   Interval: 120s
+2026-03-29 11:56:06,840 [__main__] INFO —   Dry run: True
+2026-03-29 11:56:06,840 [__main__] INFO —   Running simulated email check...
+2026-03-29 11:56:06,840 [src.watchers.base_watcher.GmailWatcher] INFO — [DRY RUN] Simulating Gmail check
+2026-03-29 11:56:06,840 [__main__] INFO —   Check result: False
+2026-03-29 11:56:06,856 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,856 [__main__] INFO — TEST 3: Filesystem Watcher Test
+2026-03-29 11:56:06,856 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,856 [__main__] INFO —   Processing file drop...
+2026-03-29 11:56:06,856 [src.watchers.base_watcher.FilesystemWatcher] INFO — [DRY RUN] Would create action file: 20260329_115606_file_test_drop.txt.md
+2026-03-29 11:56:06,856 [src.watchers.base_watcher.FilesystemWatcher] INFO — Created action file for dropped file: test_drop.txt
+2026-03-29 11:56:06,856 [__main__] INFO —   [DRY RUN] No file written (expected)
+2026-03-29 11:56:06,856 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,856 [__main__] INFO — TEST 4: Approval Workflow Test
+2026-03-29 11:56:06,856 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,888 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,888 [__main__] INFO — TEST 5: Audit Logging Test
+2026-03-29 11:56:06,888 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,888 [__main__] INFO —   Performing test action...
+2026-03-29 11:56:06,888 [src.actions.audit_logger] DEBUG — Logged action: component_test by test_suite
+2026-03-29 11:56:06,919 [__main__] INFO —   Actor: test_suite
+2026-03-29 11:56:06,919 [__main__] INFO —   Result: success
+2026-03-29 11:56:06,919 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,919 [__main__] INFO — TEST 6: Orchestrator Test
+2026-03-29 11:56:06,919 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,919 [__main__] INFO —   Watching: AI_Employee_Vault\Needs_Action
+2026-03-29 11:56:06,919 [__main__] INFO —   Folder exists: True
+2026-03-29 11:56:06,919 [__main__] INFO — 
+======================================================================
+2026-03-29 11:56:06,919 [__main__] INFO — TEST SUMMARY
+2026-03-29 11:56:06,919 [__main__] INFO — ======================================================================
+2026-03-29 11:56:06,934 [__main__] INFO — 
+Total: 6/6 tests passed
+2026-03-29 11:56:06,950 [__main__] INFO — ======================================================================

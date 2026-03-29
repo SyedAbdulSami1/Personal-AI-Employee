@@ -1,0 +1,34 @@
+{
+  "servers": [
+    {
+      "name": "filesystem",
+      "type": "builtin",
+      "note": "Built-in. Claude reads/writes vault files. No extra install."
+    },
+    {
+      "name": "email",
+      "command": "node",
+      "args": ["/absolute/path/to/email-mcp/index.js"],
+      "env": {
+        "GMAIL_CREDENTIALS": "/absolute/path/to/credentials.json"
+      },
+      "note": "Handles send, draft, search for Gmail. Update path after cloning email-mcp."
+    },
+    {
+      "name": "browser",
+      "command": "npx",
+      "args": ["@anthropic/browser-mcp"],
+      "env": {
+        "HEADLESS": "true"
+      },
+      "note": "Playwright browser for LinkedIn web automation, payment portals"
+    }
+  ],
+  "model": {
+    "provider": "qwen",
+    "model_name": "qwen-max",
+    "temperature": 0.2,
+    "max_tokens": 4096,
+    "top_p": 0.95
+  }
+}

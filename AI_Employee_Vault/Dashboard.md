@@ -1,31 +1,22 @@
+---
+last_updated: 2026-03-29T13:15:00Z
+status: active
+---
 # AI Employee Dashboard
 
-## System Status
-- **Last Updated**: {{timestamp}}
-- **Overall Health**: {{health_status}}
+## Live Status
+| Component | Status | Last Check |
+|-----------|--------|------------|
+| Gmail Watcher | 🟢 Running | - |
+| WhatsApp Watcher | 🟢 Running | - |
+| Orchestrator | 🟢 Running | - |
 
-## Today's Metrics
-- **Tasks Processed**: {{tasks_today}}
-- **Emails Sent**: {{emails_today}}
-- **Messages Sent**: {{messages_today}}
-- **Files Processed**: {{files_today}}
+## Pending Actions
+<!-- Auto-updated by Claude -->
 
-## Queue Status
-- **Needs Action**: {{needs_action_count}} items
-- **Pending Approval**: {{pending_approval_count}} items
-- **In Progress**: {{in_progress_count}} items (claude)
+## This Week's Revenue
+- MTD: $0 / $10,000 target
 
 ## Recent Activity
-{{recent_activities}}
-
-## Alerts & Warnings
-{{alerts}}
-
-## Quick Actions
-- [ ] Process Needs Action folder
-- [ ] Review Pending Approvals
-- [ ] Check System Logs
-- [ ] Generate Briefing
-
----
-*Last updated: {{timestamp}}*
+<!-- Appended by Claude after each action -->
+- [2026-03-29 13:15] E2E Test: Invoice sent to Client A ($1,500) - DRY_RUN mode

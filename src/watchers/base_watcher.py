@@ -1,188 +1,130 @@
 """
-Base watcher class for all file system watchers in the Personal AI Employee system.
-All watchers should extend this class and implement the required methods.
+BaseWatcher — Abstract base class for all watchers.
+All watchers must extend this class and implement:
+  - check_for_updates()
+  - create_action_file()
 """
-import abc
+from abc import ABC, abstractmethod
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-from src.actions.audit_logger import audit_logger
-from src.config import config
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 
-class BaseWatcher(abc.ABC):
-    """
-    Abstract base class for all watchers.
-    Provides common functionality like logging, dry-run support, and audit trails.
-    """
+class BaseWatcher(ABC):
+    """Abstract base class for all watcher implementations."""
 
-    def __init__(self, name: str, config_instance=None):
+    def __init__(self, config: Any, vault_path: Path):
         """
-        Initialize the watcher.
+        Initialize base watcher.
 
         Args:
-            name: Unique name for this watcher (used in logging)
-            config_instance: Config instance (uses global if not provided)
+            config: Config dataclass with dry_run, interval, etc.
+            vault_path: Path to AI_Employee_Vault directory
         """
-        self.name = name
-        self.config = config_instance or config
-        self.logger = logging.getLogger(f"{__name__}.{name}")
-        self._last_run = None
-        self._run_count = 0
+        self.config = config
+        self.vault_path = vault_path
+        self.needs_action_path = vault_path / "Needs_Action"
+        self.logs_path = vault_path / "Logs"
+        self.dry_run = getattr(config, 'dry_run', True)
+        self.interval = getattr(config, 'interval', 60)
+        self._processed_ids: set = set()
 
-    @abc.abstractmethod
-    def check_for_updates(self) -> bool:
+        # Ensure directories exist
+        self.needs_action_path.mkdir(parents=True, exist_ok=True)
+        self.logs_path.mkdir(parents=True, exist_ok=True)
+
+    @abstractmethod
+    def check_for_updates(self) -> List[Dict[str, Any]]:
         """
-        Check for new updates or items to process.
-        Should return True if updates were found and processed, False otherwise.
+        Check for new updates/items from the data source.
 
         Returns:
-            bool: True if updates were processed, False if none found
+            List of dictionaries containing item data to process.
+            Each dict should have at minimum:
+            - id: Unique identifier for deduplication
+            - type: 'email' | 'whatsapp' | 'file' | etc.
+            - from: Sender/originator
+            - subject: Subject/preview text
+            - received: ISO 8601 timestamp
+            - priority: 'high' | 'medium' | 'low'
+            - content: Full content/body
         """
         pass
 
-    @abc.abstractmethod
-    def create_action_file(self, update_data: dict) -> Optional[Path]:
+    @abstractmethod
+    def create_action_file(self, item: Dict[str, Any]) -> Optional[Path]:
         """
-        Create an action file in the Needs_Action directory based on update data.
+        Create a Needs_Action markdown file for the given item.
 
         Args:
-            update_data: Dictionary containing information about the update
+            item: Dictionary from check_for_updates()
 
         Returns:
-            Path: Path to the created action file, or None if creation failed
+            Path to created file, or None if DRY_RUN or error.
         """
         pass
+
+    def _is_duplicate(self, item_id: str) -> bool:
+        """Check if item has already been processed this session."""
+        return item_id in self._processed_ids
+
+    def _mark_processed(self, item_id: str) -> None:
+        """Mark an item as processed."""
+        self._processed_ids.add(item_id)
 
     def run(self) -> None:
         """
-        Main watcher loop. Called by the watcher's main entry point.
-        Handles timing, error handling, and basic lifecycle.
+        Main watcher loop with exponential backoff on errors.
+        Runs indefinitely until interrupted.
         """
-        self.logger.info(f"Starting {self.name} watcher")
-        self._last_run = datetime.now()
+        logger.info(f"[{self.__class__.__name__}] Starting watcher loop (interval={self.interval}s, dry_run={self.dry_run})")
 
-        try:
-            while True:
-                self._run_count += 1
-                start_time = time.time()
+        consecutive_errors = 0
+        max_errors = 5
+        base_delay = 5
 
-                try:
-                    # Check for updates
-                    updates_found = self.check_for_updates()
+        while True:
+            try:
+                # Check for new items
+                items = self.check_for_updates()
 
-                    if updates_found:
-                        self.logger.info(f"{self.name} processed updates")
-                        audit_logger.log_action(
-                            action_type=f"{self.name}_check",
-                            actor=self.name,
-                            target="system",
-                            parameters={"updates_found": True, "run_count": self._run_count},
-                            approval_status="auto_approved",
-                            result="success",
-                            dry_run=self.config.dry_run
-                        )
-                    else:
-                        self.logger.debug(f"{self.name} check complete - no updates")
-                        audit_logger.log_action(
-                            action_type=f"{self.name}_check",
-                            actor=self.name,
-                            target="system",
-                            parameters={"updates_found": False, "run_count": self._run_count},
-                            approval_status="auto_approved",
-                            result="success",
-                            dry_run=self.config.dry_run
-                        )
+                if items:
+                    logger.info(f"[{self.__class__.__name__}] Found {len(items)} new items")
 
-                except Exception as e:
-                    self.logger.error(f"Error in {self.name} watcher: {e}", exc_info=True)
-                    audit_logger.log_action(
-                        action_type=f"{self.name}_error",
-                        actor=self.name,
-                        target="system",
-                        parameters={"error": str(e), "run_count": self._run_count},
-                        approval_status="system_error",
-                        result="failure",
-                        error=str(e),
-                        dry_run=self.config.dry_run
-                    )
+                    for item in items:
+                        if not self._is_duplicate(item.get('id', '')):
+                            action_file = self.create_action_file(item)
+                            if action_file:
+                                self._mark_processed(item['id'])
+                                logger.info(f"[{self.__class__.__name__}] Created: {action_file.name}")
+                else:
+                    logger.debug(f"[{self.__class__.__name__}] No new items")
 
-                # Calculate sleep time
-                elapsed = time.time() - start_time
-                sleep_time = max(0, self.get_interval() - elapsed)
+                consecutive_errors = 0  # Reset on success
 
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error(
+                    f"[{self.__class__.__name__}] Error in watcher loop (attempt {consecutive_errors}/{max_errors}): {e}",
+                    exc_info=True
+                )
 
-        except KeyboardInterrupt:
-            self.logger.info(f"{self.name} watcher stopped by user")
-        except Exception as e:
-            self.logger.critical(f"Fatal error in {self.name} watcher: {e}", exc_info=True)
-            raise
+                if consecutive_errors >= max_errors:
+                    logger.critical(f"[{self.__class__.__name__}] Max consecutive errors reached. Stopping.")
+                    raise
 
-    def get_interval(self) -> int:
-        """Get the check interval for this watcher (to be overridden by subclasses)."""
-        return 60  # Default 1 minute
+                # Exponential backoff
+                delay = base_delay * (2 ** (consecutive_errors - 1))
+                logger.warning(f"[{self.__class__.__name__}] Waiting {delay}s before retry...")
+                time.sleep(delay)
 
-    def get_stats(self) -> dict:
-        """Get watcher statistics."""
-        return {
-            "name": self.name,
-            "last_run": self._last_run.isoformat() if self._last_run else None,
-            "run_count": self._run_count,
-            "interval_seconds": self.get_interval()
-        }
+            # Wait for next interval
+            time.sleep(self.interval)
 
-    def _create_yaml_frontmatter(self, data: dict) -> str:
-        """
-        Create YAML frontmatter for action files.
-
-        Args:
-            data: Dictionary of data to include in frontmatter
-
-        Returns:
-            str: YAML frontmatter string
-        """
-        lines = ["---"]
-        for key, value in data.items():
-            if isinstance(value, str):
-                lines.append(f"{key}: {value}")
-            else:
-                lines.append(f"{key}: {value}")
-        lines.append("---")
-        lines.append("")  # Empty line after frontmatter
-        return "\n".join(lines)
-
-    def _create_action_file(self, filename: str, frontmatter_data: dict, content: str = "") -> Path:
-        """
-        Create an action file with YAML frontmatter.
-
-        Args:
-            filename: Name of the file to create
-            frontmatter_data: Data for the YAML frontmatter
-            content: Content to place after the frontmatter
-
-        Returns:
-            Path: Path to the created file
-        """
-        if self.config.dry_run:
-            self.logger.info(f"[DRY RUN] Would create action file: {filename}")
-            return self.config.needs_action_path / filename
-
-        file_path = self.config.needs_action_path / filename
-        frontmatter = self._create_yaml_frontmatter(frontmatter_data)
-
-        try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(frontmatter)
-                f.write(content)
-            self.logger.debug(f"Created action file: {file_path}")
-            return file_path
-        except Exception as e:
-            self.logger.error(f"Failed to create action file {filename}: {e}")
-            raise
+    def stop(self) -> None:
+        """Cleanup method called before watcher stops."""
+        logger.info(f"[{self.__class__.__name__}] Stopping watcher...")
+        # Override in subclass if cleanup needed (e.g., close connections)

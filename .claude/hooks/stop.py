@@ -1,118 +1,169 @@
-#!/usr/bin/env python3
 """
-Ralph Wiggum stop-hook for preventing premature exit until tasks are complete.
+Ralph Wiggum Stop Hook — Prevents Claude from exiting until task is complete.
+Intercepts exit signal and checks if task file exists in /Done/.
+
+Usage:
+  - Place in .claude/hooks/stop.py
+  - Claude will call this hook before exiting
+  - If task not in Done/, re-injects prompt and blocks exit
+  - Max 10 iterations, then writes ALERT file
 """
 import os
 import sys
+import logging
 from pathlib import Path
+from datetime import datetime, timezone
 
-def main():
-    """Implement Ralph Wiggum stop-hook logic."""
-    # Get the Ralph Wiggum counter from environment (default to 0)
-    ralph_counter = int(os.environ.get("RALPH_COUNTER", "0"))
+# Setup logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [RalphWiggum] %(levelname)s — %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("AI_Employee_Vault/Logs/ralph_wiggum.log"),
+    ],
+)
+logger = logging.getLogger(__name__)
 
-    # Get the vault path - in a real implementation, this would come from config
-    # For now, we'll look for the Done folder in common locations
-    possible_vault_paths = [
-        Path("./AI_Employee_Vault/Done"),
-        Path("../AI_Employee_Vault/Done"),
-        Path("../../AI_Employee_Vault/Done"),
-        Path(os.environ.get("VAULT_PATH", "./AI_Employee_Vault")) / "Done"
-    ]
 
-    done_folder = None
-    for path in possible_vault_paths:
-        if path.exists():
-            done_folder = path
-            break
+def check_task_completion() -> bool:
+    """
+    Check if the current task has been completed.
+    Task is complete if a corresponding file exists in /Done/.
 
-    if done_folder is None:
-        # If we can't find the Done folder, assume we're in a test environment
-        # and allow exit to prevent infinite loops during development
-        print("RALPH WIGGUM: Done folder not found - allowing exit (test mode)")
-        sys.exit(0)
+    Returns:
+        True if task is complete, False otherwise.
+    """
+    vault_path = Path(os.getenv("VAULT_PATH", "./AI_Employee_Vault"))
+    done_path = vault_path / "Done"
 
-    # In a real implementation, we would check for a specific task file
-    # For this simulation, we'll check if there are ANY files in Done/
+    if not done_path.exists():
+        logger.warning(f"Done path does not exist: {done_path}")
+        return False
+
+    # Check if there are any files in Done/ (task completion indicator)
+    done_files = list(done_path.glob("*.md"))
+
+    if done_files:
+        logger.info(f"Task complete! Found {len(done_files)} files in Done/")
+        return True
+
+    logger.info("No files in Done/ - task not complete")
+    return False
+
+
+def get_ralph_counter() -> int:
+    """Get current Ralph Wiggum iteration counter."""
     try:
-        done_files = list(done_folder.glob("*.md"))
-        has_done_files = len(done_files) > 0
-    except Exception as e:
-        print(f"RALPH WIGGUM: Error checking Done folder: {e}")
-        # Allow exit on error to prevent infinite loops
-        sys.exit(0)
+        return int(os.getenv("RALPH_COUNTER", "0"))
+    except ValueError:
+        return 0
 
-    # Ralph Wiggum logic:
-    # Exit allowed : task file exists in Done/
-    # Exit blocked : counter < 10 → increment, re-inject prompt, sys.exit(1)
-    # Max reached  : counter == 10 → write ALERT_ralph_max_<task>.md → sys.exit(0)
 
-    if has_done_files:
-        # Exit allowed - reset counter and exit normally
-        print(f"RALPH WIGGUM: Found {len(done_files)} files in Done/ - allowing exit")
-        os.environ["RALPH_COUNTER"] = "0"  # Reset counter
-        sys.exit(0)
-    else:
-        # Exit blocked - check if we've reached max iterations
-        if ralph_counter >= 10:
-            # Max reached - write alert and exit normally
-            print(f"RALPH WIGGUM: Maximum iterations ({ralph_counter}) reached - creating alert and exiting")
+def set_ralph_counter(counter: int) -> None:
+    """Set Ralph Wiggum iteration counter."""
+    # Write to temp file for next iteration
+    counter_file = Path("AI_Employee_Vault/Logs/ralph_counter.txt")
+    counter_file.parent.mkdir(parents=True, exist_ok=True)
+    counter_file.write_text(str(counter))
+    logger.debug(f"Ralph counter set to: {counter}")
 
-            # Create alert file in Needs_Action
-            needs_action_paths = [
-                Path("./AI_Employee_Vault/Needs_Action"),
-                Path("../AI_Employee_Vault/Needs_Action"),
-                Path("../../AI_Employee_Vault/Needs_Action"),
-                Path(os.environ.get("VAULT_PATH", "./AI_Employee_Vault")) / "Needs_Action"
-            ]
 
-            needs_action_folder = None
-            for path in needs_action_paths:
-                if path.exists():
-                    needs_action_folder = path
-                    break
+def write_alert(counter: int) -> None:
+    """
+    Write ALERT file when max iterations reached.
 
-            if needs_action_folder:
-                alert_content = f"""# Ralph Wiggum Maximum Iterations Reached
+    Args:
+        counter: Final counter value
+    """
+    vault_path = Path(os.getenv("VAULT_PATH", "./AI_Employee_Vault"))
+    needs_action_path = vault_path / "Needs_Action"
 
-**Timestamp:** {os.environ.get('TIMESTAMP', 'unknown')}
-**Counter:** {ralph_counter}
-**Message:** The Ralph Wiggum stop-hook has prevented exit for 10 consecutive checks.
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    alert_file = needs_action_path / f"ALERT_ralph_max_{timestamp}.md"
 
-This indicates that the autonomous AI employee may be stuck on a task
-or requires manual intervention to complete the current workflow.
+    content = f"""---
+type: alert
+from: RalphWiggum
+subject: Max iterations reached without task completion
+received: {datetime.now(timezone.utc).isoformat()}
+priority: high
+status: pending
+---
+## Ralph Wiggum Alert
 
-Please check:
-1. The Needs_Action folder for unprocessed items
-2. The Pending_Approval folder for items awaiting review
-3. The In_Progress/claude folder for items being processed
-4. System logs for error messages
-5. Whether external services (Gmail, WhatsApp) are accessible
+The AI Employee agent has reached the maximum number of iterations ({counter})
+without completing the task and moving files to /Done/.
 
-After resolving the issue, manually move a completed task to the Done/
-folder to allow normal processing to resume.
+## Required Actions
+
+- [ ] Review what the agent was trying to accomplish
+- [ ] Check if there are errors blocking completion
+- [ ] Manually move files to /Done/ if task is actually complete
+- [ ] Or provide clearer instructions to the agent
+
+## Debug Info
+
+- **Counter**: {counter}
+- **Timestamp**: {datetime.now(timezone.utc).isoformat()}
+- **Vault Path**: {vault_path}
+
+This alert was automatically generated by the Ralph Wiggum stop hook.
 """
 
-                alert_file = needs_action_folder / f"ALERT_ralph_max_{ralph_counter}_{int(os.environ.get('TIMESTAMP', '0'))}.md"
-                try:
-                    with open(alert_file, 'w') as f:
-                        f.write(alert_content)
-                    print(f"RALPH WIGGUM: Alert created at {alert_file}")
-                except Exception as e:
-                    print(f"RALPH WIGGUM: Failed to create alert: {e}")
+    alert_file.write_text(content, encoding='utf-8')
+    logger.error(f"ALERT written: {alert_file}")
 
-            # Reset counter and exit
-            os.environ["RALPH_COUNTER"] = "0"
-            sys.exit(0)
-        else:
-            # Counter < 10 - increment and block exit
-            new_counter = ralph_counter + 1
-            print(f"RALPH WIGGUM: Counter {ralph_counter} -> {new_counter} - blocking exit")
-            os.environ["RALPH_COUNTER"] = str(new_counter)
 
-            # In a real implementation, we would re-inject the original prompt here
-            # For this simulation, we just exit with code 1 to trigger the hook again
-            sys.exit(1)
+def main():
+    """Main hook entry point."""
+    logger.info("=" * 50)
+    logger.info("Ralph Wiggum Stop Hook — Checking task completion")
+    logger.info("=" * 50)
+
+    # Get configuration
+    max_iterations = int(os.getenv("RALPH_MAX_ITERATIONS", "10"))
+    current_counter = get_ralph_counter()
+
+    logger.info(f"Max iterations: {max_iterations}, Current: {current_counter}")
+
+    # Check if task is complete
+    if check_task_completion():
+        logger.info("✓ Task complete — allowing exit")
+        print("RALPH_WIGGUM: Task complete, exit allowed")
+        sys.exit(0)
+
+    # Task not complete - check iteration limit
+    if current_counter >= max_iterations:
+        logger.error(f"✗ Max iterations ({max_iterations}) reached")
+        write_alert(current_counter)
+        print(f"RALPH_WIGGUM: Max iterations ({max_iterations}) reached. ALERT written.")
+        # Exit cleanly but indicate failure
+        sys.exit(0)
+
+    # Increment counter
+    new_counter = current_counter + 1
+    set_ralph_counter(new_counter)
+
+    logger.warning(f"✗ Task not complete — blocking exit (iteration {new_counter}/{max_iterations})")
+
+    # Re-inject prompt by writing to a special file
+    vault_path = Path(os.getenv("VAULT_PATH", "./AI_Employee_Vault"))
+    reinject_file = vault_path / "Logs" / "ralph_reinject.txt"
+    reinject_file.parent.mkdir(parents=True, exist_ok=True)
+
+    reinject_file.write_text(
+        f"RALPH WIGGUM HOOK: Task not complete. "
+        f"Iteration {new_counter}/{max_iterations}. "
+        f"Please continue working until files are moved to /Done/."
+    )
+
+    print(f"RALPH_WIGGUM: Task not complete. Iteration {new_counter}/{max_iterations}. Re-injecting prompt.")
+
+    # Exit with special code to signal prompt re-injection needed
+    # Claude Code should catch this and re-prompt
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

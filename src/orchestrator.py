@@ -1,263 +1,378 @@
 """
-Main orchestrator for the Personal AI Employee system.
-Watches for action files and coordinates processing with Claude Code.
+Orchestrator — Master process that coordinates watchers and triggers Claude Code.
+Watches /Needs_Action/ for new tasks and /Approved/ for action approvals.
 """
-import time
-import threading
-from datetime import datetime
-from pathlib import Path
-from typing import Optional
-
 import logging
+import subprocess
+import time
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional, Dict, Any
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 
-from src.config import config
-from src.actions.audit_logger import audit_logger
+from .config import Config
+from .actions.audit_logger import AuditLogger
+from .actions.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
 
+class NeedsActionHandler(FileSystemEventHandler):
+    """Handles new files in Needs_Action/ folder."""
+
+    def __init__(self, orchestrator: 'Orchestrator'):
+        self.orchestrator = orchestrator
+
+    def on_created(self, event):
+        """Handle new action file creation."""
+        if event.is_directory:
+            return
+
+        src_path = Path(event.src_path)
+
+        # Only process .md files
+        if src_path.suffix.lower() != '.md':
+            return
+
+        logger.info(f"[Orchestrator] New action file detected: {src_path.name}")
+
+        # Trigger Claude Code to process
+        self.orchestrator.trigger_claude_for_task(src_path)
+
+
+class ApprovedHandler(FileSystemEventHandler):
+    """Handles files moved to Approved/ folder."""
+
+    def __init__(self, orchestrator: 'Orchestrator'):
+        self.orchestrator = orchestrator
+
+    def on_created(self, event):
+        """Handle new approved file."""
+        if event.is_directory:
+            return
+
+        src_path = Path(event.src_path)
+
+        if src_path.suffix.lower() != '.md':
+            return
+
+        logger.info(f"[Orchestrator] Approval detected: {src_path.name}")
+
+        # Trigger MCP action
+        self.orchestrator.process_approved_file(src_path)
+
+
 class Orchestrator:
     """
-    Main orchestrator that watches for action files and triggers Claude Code processing.
-    Implements the Ralph Wiggum loop mechanism for autonomous task completion.
+    Main orchestrator for the AI Employee system.
+    Coordinates watchers, triggers Claude Code, and processes approvals.
     """
 
-    def __init__(self):
+    def __init__(self, config: Config):
+        """
+        Initialize orchestrator.
+
+        Args:
+            config: Config instance (singleton)
+        """
         self.config = config
-        self.logger = logging.getLogger(__name__)
-        self._running = False
-        self._ralph_counter = 0
-        self._processed_files = set()  # Track files we've already processed
+        self.audit_logger = AuditLogger(config.logs_path)
+        self.rate_limiter = RateLimiter(config.vault_path)
 
-    def start(self):
-        """Start the orchestrator."""
-        self.logger.info("Starting Personal AI Employee Orchestrator")
-        self._running = True
+        self._needs_action_observer: Optional[Observer] = None
+        self._approved_observer: Optional[Observer] = None
 
-        # Start the orchestrator loop in a separate thread
-        orchestrator_thread = threading.Thread(target=self._run_loop, daemon=True)
-        orchestrator_thread.start()
+        # Ensure directories exist
+        self.config.needs_action_path.mkdir(parents=True, exist_ok=True)
+        self.config.approved_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Orchestrator started successfully")
+        logger.info(f"[Orchestrator] Initialized with vault: {config.vault_path}")
 
-    def stop(self):
-        """Stop the orchestrator."""
-        self.logger.info("Stopping Personal AI Employee Orchestrator")
-        self._running = False
+    def start_watching(self) -> None:
+        """Start watching Needs_Action/ and Approved/ folders."""
+        # Watch Needs_Action/
+        self._needs_action_observer = Observer()
+        needs_handler = NeedsActionHandler(self)
+        self._needs_action_observer.schedule(
+            needs_handler,
+            str(self.config.needs_action_path),
+            recursive=False
+        )
+        self._needs_action_observer.start()
+        logger.info(f"[Orchestrator] Watching {self.config.needs_action_path}")
 
-    def _run_loop(self):
-        """Main orchestrator loop."""
-        while self._running:
-            try:
-                self._process_needs_action_folder()
-                time.sleep(5)  # Check every 5 seconds
-            except Exception as e:
-                self.logger.error(f"Error in orchestrator loop: {e}", exc_info=True)
-                time.sleep(10)  # Wait longer on error
+        # Watch Approved/
+        self._approved_observer = Observer()
+        approved_handler = ApprovedHandler(self)
+        self._approved_observer.schedule(
+            approved_handler,
+            str(self.config.approved_path),
+            recursive=False
+        )
+        self._approved_observer.start()
+        logger.info(f"[Orchestrator] Watching {self.config.approved_path}")
 
-    def _process_needs_action_folder(self):
-        """Process files in the Needs_Action folder."""
-        try:
-            needs_action_path = self.config.needs_action_path
+        # Log startup
+        self.audit_logger.log_action(
+            action_type="orchestrator_start",
+            actor="orchestrator",
+            target=str(self.config.vault_path),
+            result="success",
+            dry_run=self.config.dry_run
+        )
 
-            # Get all markdown files in Needs_Action
-            md_files = list(needs_action_path.glob("*.md"))
+    def stop_watching(self) -> None:
+        """Stop folder watchers."""
+        logger.info("[Orchestrator] Stopping watchers...")
 
-            for md_file in md_files:
-                # Skip if we've already processed this file recently
-                if md_file in self._processed_files:
-                    continue
+        if self._needs_action_observer:
+            self._needs_action_observer.stop()
+            self._needs_action_observer.join()
 
-                # Check if file is ready to process (not being written to)
-                if self._is_file_ready(md_file):
-                    self.logger.info(f"Processing action file: {md_file.name}")
-                    self._process_action_file(md_file)
-                    self._processed_files.add(md_file)
+        if self._approved_observer:
+            self._approved_observer.stop()
+            self._approved_observer.join()
 
-                    # Limit the size of processed files set to prevent memory growth
-                    if len(self._processed_files) > 1000:
-                        # Keep only the most recent 500 entries
-                        self._processed_files = set(list(self._processed_files)[-500:])
+        logger.info("[Orchestrator] Stopped")
 
-        except Exception as e:
-            self.logger.error(f"Error processing Needs_Action folder: {e}", exc_info=True)
-
-    def _is_file_ready(self, file_path: Path) -> bool:
+    def trigger_claude_for_task(self, action_file: Path) -> None:
         """
-        Check if a file is ready to be processed (not currently being written to).
+        Trigger Claude Code to process a new task.
 
         Args:
-            file_path: Path to the file to check
-
-        Returns:
-            bool: True if file is ready, False if still being written
+            action_file: Path to the new action file in Needs_Action/
         """
         try:
-            # Try to open the file for reading - if it fails, it might be locked
-            with open(file_path, 'r'):
-                pass
-            return True
-        except (IOError, OSError):
-            return False
+            # Check rate limit
+            if not self.rate_limiter.check_and_increment('claude_api_call'):
+                logger.warning("Claude API rate limit exceeded, queuing task")
+                return
 
-    def _process_action_file(self, file_path: Path):
-        """
-        Process an action file by triggering Claude Code and implementing Ralph Wiggum loop.
+            # Read the action file
+            content = action_file.read_text(encoding='utf-8')
 
-        Args:
-            file_path: Path to the action file to process
-        """
-        try:
-            # Read the action file to understand what needs to be done
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Build Claude command
+            prompt = f"""
+You are the AI Employee agent. Process this new task from Needs_Action/.
 
-            self.logger.info(f"Triggering Claude Code for file: {file_path.name}")
+## Action File: {action_file.name}
 
-            # Log that we're starting processing
-            audit_logger.log_action(
-                action_type="orchestrator_process_start",
+{content}
+
+## Your Tasks:
+1. Read the action file and understand the request
+2. Check Company_Handbook.md for relevant rules
+3. Create a plan in /Plans/PLAN_<task>.md
+4. If action requires approval, create file in /Pending_Approval/
+5. If approved (file in /Approved/), execute the action via MCP
+6. Move all related files to /Done/ when complete
+7. Update Dashboard.md with activity
+8. Log all actions to /Logs/
+
+## Rules:
+- DRY_RUN={self.config.dry_run}
+- Follow Company_Handbook.md rules
+- Always log actions
+- Never skip approval for payments or new contacts
+"""
+
+            # Call Claude Code
+            logger.info(f"[Orchestrator] Triggering Claude for: {action_file.name}")
+
+            result = subprocess.run(
+                ['claude', '--prompt', prompt],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode == 0:
+                logger.info(f"[Orchestrator] Claude completed: {action_file.name}")
+            else:
+                logger.error(f"[Orchestrator] Claude failed: {result.stderr}")
+
+            # Log the action
+            self.audit_logger.log_action(
+                action_type="claude_triggered",
                 actor="orchestrator",
-                target=str(file_path.name),
-                parameters={"file_path": str(file_path)},
-                approval_status="auto_approved",
-                result="started",
+                target=str(action_file),
+                parameters={'stdout': result.stdout[:500] if result.stdout else ''},
+                result="success" if result.returncode == 0 else "failure",
+                error=result.stderr if result.returncode != 0 else None,
                 dry_run=self.config.dry_run
             )
 
-            # In a real implementation, this would trigger Claude Code
-            # For now, we'll simulate the processing by moving the file
-            # through the approval workflow
-
-            # Move to In_Progress/claude to indicate Claude is working on it
-            in_progress_path = self.config.in_progress_path / file_path.name
-            file_path.rename(in_progress_path)
-
-            self.logger.info(f"Moved {file_path.name} to In_Progress/claude")
-
-            # Log the move
-            audit_logger.log_action(
-                action_type="file_move",
+        except subprocess.TimeoutExpired:
+            logger.error(f"[Orchestrator] Claude timed out for: {action_file.name}")
+            self.audit_logger.log_action(
+                action_type="claude_timeout",
                 actor="orchestrator",
-                target=str(file_path.name),
-                parameters={
-                    "from": str(file_path),
-                    "to": str(in_progress_path),
-                    "stage": "in_progress"
-                },
-                approval_status="auto_approved",
-                result="success",
+                target=str(action_file),
+                result="failure",
+                error="Claude Code timed out after 300s",
                 dry_run=self.config.dry_run
             )
-
-            # Simulate Claude Code processing time
-            # In reality, Claude would process the file and create approval requests
-            # For this simulation, we'll just move it to Pending_Approval after a delay
-            import time
-            time.sleep(2)  # Simulate processing time
-
-            # Move to Pending_Approval for human review
-            pending_approval_path = self.config.pending_approval_path / file_path.name
-            in_progress_path.rename(pending_approval_path)
-
-            self.logger.info(f"Moved {file_path.name} to Pending_Approval for review")
-
-            # Log the move to pending approval
-            audit_logger.log_action(
-                action_type="file_move",
-                actor="orchestrator",
-                target=str(file_path.name),
-                parameters={
-                    "from": str(in_progress_path),
-                    "to": str(pending_approval_path),
-                    "stage": "pending_approval"
-                },
-                approval_status="auto_approved",
-                result="success",
-                dry_run=self.config.dry_run
-            )
-
-            # Implement Ralph Wiggum loop - check if task is done
-            self._check_ralph_wiggum_loop(file_path.name)
 
         except Exception as e:
-            self.logger.error(f"Error processing action file {file_path.name}: {e}", exc_info=True)
-            audit_logger.log_action(
-                action_type="orchestrator_process_error",
+            logger.error(f"[Orchestrator] Error triggering Claude: {e}", exc_info=True)
+            self.audit_logger.log_action(
+                action_type="claude_error",
                 actor="orchestrator",
-                target=str(file_path.name),
-                parameters={"error": str(e), "file_path": str(file_path)},
-                approval_status="system_error",
+                target=str(action_file),
                 result="failure",
                 error=str(e),
                 dry_run=self.config.dry_run
             )
 
-    def _check_ralph_wiggum_loop(self, filename: str):
+    def process_approved_file(self, approval_file: Path) -> None:
         """
-        Implement the Ralph Wiggum stop-hook mechanism.
-        Checks if a task file exists in Done/ to allow exit, otherwise increments counter.
+        Process an approved action file.
 
         Args:
-            filename: Name of the file being processed
+            approval_file: Path to the approved file
         """
-        done_file_path = self.config.done_path / filename
+        try:
+            # Read approval file
+            content = approval_file.read_text(encoding='utf-8')
 
-        if done_file_path.exists():
-            # Task is done - reset counter and allow normal exit
-            self._ralph_counter = 0
-            self.logger.info(f"Task {filename} found in Done/ - Ralph Wiggum counter reset")
-        else:
-            # Task not done yet - increment counter
-            self._ralph_counter += 1
-            self.logger.info(f"Ralph Wiggum counter: {self._ralph_counter}/10")
+            # Parse frontmatter to get action type
+            action_type = self._extract_action_type(content)
 
-            if self._ralph_counter >= self.config.ralph_max_iterations:
-                # Max reached - create alert and exit
-                alert_filename = f"ALERT_ralph_max_{filename}"
-                alert_path = self.config.needs_action_path / alert_filename
+            if not action_type:
+                logger.warning(f"[Orchestrator] Could not determine action type: {approval_file.name}")
+                return
 
-                alert_content = f"""# Ralph Wiggum Maximum Iterations Reached
+            logger.info(f"[Orchestrator] Processing approved action: {action_type}")
 
-**Task:** {filename}
-**Counter:** {self._ralph_counter}
-**Timestamp:** {datetime.now().isoformat()}
-
-The Ralph Wiggum stop-hook has prevented exit for 10 consecutive checks.
-This indicates the task may be stuck or requires manual intervention.
-
-Please review the task and either:
-1. Move the completed task to Done/ to allow normal processing
-2. Investigate why the task is not completing
-3. Manually intervene if necessary
-"""
-
-                try:
-                    with open(alert_path, 'w', encoding='utf-8') as f:
-                        f.write(alert_content)
-                    self.logger.warning(f"Ralph Wiggum alert created: {alert_filename}")
-                except Exception as e:
-                    self.logger.error(f"Failed to create Ralph Wiggum alert: {e}")
-
-                # Reset counter after creating alert
-                self._ralph_counter = 0
+            # Trigger appropriate MCP based on action type
+            if action_type == 'send_email':
+                self._trigger_email_mcp(approval_file, content)
+            elif action_type == 'payment':
+                self._trigger_payment_mcp(approval_file, content)
+            elif action_type == 'social_post':
+                self._trigger_social_mcp(approval_file, content)
+            elif action_type == 'whatsapp_send':
+                self._trigger_whatsapp_mcp(approval_file, content)
             else:
-                # Not max yet - in a real implementation, we would re-inject the prompt
-                # and exit with code 1 to trigger the stop hook
-                self.logger.debug(f"Ralph Wiggum counter incremented to {self._ralph_counter}")
+                logger.warning(f"[Orchestrator] Unknown action type: {action_type}")
 
-    def get_status(self) -> dict:
-        """Get current orchestrator status."""
-        return {
-            "running": self._running,
-            "ralph_counter": self._ralph_counter,
-            "processed_files_count": len(self._processed_files),
-            "needs_action_count": len(list(self.config.needs_action_path.glob("*.md"))),
-            "pending_approval_count": len(list(self.config.pending_approval_path.glob("*.md"))),
-            "in_progress_count": len(list(self.config.in_progress_path.glob("*.md"))),
-            "done_count": len(list(self.config.done_path.glob("*.md")))
-        }
+        except Exception as e:
+            logger.error(f"[Orchestrator] Error processing approved file: {e}", exc_info=True)
+
+    def _extract_action_type(self, content: str) -> Optional[str]:
+        """Extract action type from YAML frontmatter."""
+        try:
+            # Simple YAML parsing
+            lines = content.split('\n')
+            in_frontmatter = False
+
+            for line in lines:
+                if line.strip() == '---':
+                    in_frontmatter = not in_frontmatter
+                    continue
+
+                if in_frontmatter and line.startswith('action:'):
+                    return line.split(':', 1)[1].strip()
+
+        except Exception as e:
+            logger.warning(f"Could not parse frontmatter: {e}")
+
+        return None
+
+    def _trigger_email_mcp(self, approval_file: Path, content: str) -> None:
+        """Trigger email MCP to send approved email."""
+        logger.info("[Orchestrator] Would trigger Email MCP (not implemented)")
+        # TODO: Implement email-mcp integration
+        self.audit_logger.log_action(
+            action_type="email_mcp_triggered",
+            actor="orchestrator",
+            target=str(approval_file),
+            result="dry_run" if self.config.dry_run else "success",
+            dry_run=self.config.dry_run
+        )
+
+    def _trigger_payment_mcp(self, approval_file: Path, content: str) -> None:
+        """Trigger payment MCP for approved payment."""
+        logger.info("[Orchestrator] Would trigger Payment MCP (not implemented)")
+        # TODO: Implement payment-mcp integration
+        self.audit_logger.log_action(
+            action_type="payment_mcp_triggered",
+            actor="orchestrator",
+            target=str(approval_file),
+            result="dry_run" if self.config.dry_run else "success",
+            dry_run=self.config.dry_run
+        )
+
+    def _trigger_social_mcp(self, approval_file: Path, content: str) -> None:
+        """Trigger social media MCP for approved post."""
+        logger.info("[Orchestrator] Would trigger Social MCP (not implemented)")
+        # TODO: Implement social-mcp integration
+        self.audit_logger.log_action(
+            action_type="social_mcp_triggered",
+            actor="orchestrator",
+            target=str(approval_file),
+            result="dry_run" if self.config.dry_run else "success",
+            dry_run=self.config.dry_run
+        )
+
+    def _trigger_whatsapp_mcp(self, approval_file: Path, content: str) -> None:
+        """Trigger WhatsApp MCP for approved message."""
+        logger.info("[Orchestrator] Would trigger WhatsApp MCP (not implemented)")
+        # TODO: Implement whatsapp-mcp integration
+        self.audit_logger.log_action(
+            action_type="whatsapp_mcp_triggered",
+            actor="orchestrator",
+            target=str(approval_file),
+            result="dry_run" if self.config.dry_run else "success",
+            dry_run=self.config.dry_run
+        )
+
+    def run(self) -> None:
+        """
+        Main orchestrator loop.
+        Runs indefinitely until interrupted.
+        """
+        logger.info("[Orchestrator] Starting main loop")
+
+        self.start_watching()
+
+        try:
+            while True:
+                time.sleep(1)
+
+        except KeyboardInterrupt:
+            logger.info("[Orchestrator] Interrupted, stopping...")
+        finally:
+            self.stop_watching()
 
 
-# Global orchestrator instance
-orchestrator = Orchestrator()
+def main():
+    """Entry point for orchestrator process."""
+    import sys
+
+    # Setup logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s [%(name)s] %(levelname)s — %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("AI_Employee_Vault/Logs/app.log"),
+        ],
+    )
+
+    # Load config
+    config = Config()
+
+    if not config.validate():
+        logger.error("Configuration validation failed")
+        sys.exit(1)
+
+    # Run orchestrator
+    orchestrator = Orchestrator(config)
+    orchestrator.run()
+
+
+if __name__ == "__main__":
+    main()

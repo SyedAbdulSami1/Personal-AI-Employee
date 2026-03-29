@@ -1,0 +1,104 @@
+# Qwen Model Configuration
+# Used by Claude Code for reasoning and task planning
+
+model:
+  # Primary model for complex reasoning
+  default: qwen-max
+  
+  # Code generation specialist
+  code: qwen-coder-2.5
+  
+  # Fast tasks (balance speed/cost)
+  fast: qwen-plus
+  
+  # Local fallback (via Ollama/vLLM)
+  local: qwen-2.5-7b-instruct
+
+parameters:
+  # Reasoning tasks (planning, analysis)
+  qwen-max:
+    temperature: 0.2
+    max_tokens: 4096
+    top_p: 0.95
+    top_k: 50
+    
+  # Code generation
+  qwen-coder-2.5:
+    temperature: 0.1
+    max_tokens: 8192
+    top_p: 0.9
+    top_k: 40
+    
+  # Fast tasks
+  qwen-plus:
+    temperature: 0.3
+    max_tokens: 2048
+    top_p: 0.95
+    top_k: 50
+
+# API configuration
+api:
+  # Base URL for Qwen API
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  
+  # API key (loaded from .env: QWEN_API_KEY)
+  api_key_env: QWEN_API_KEY
+  
+  # Request timeout (seconds)
+  timeout: 120
+  
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    base_delay: 1.0
+    max_delay: 60.0
+
+# Context management
+context:
+  # Maximum context window (tokens)
+  max_context: 32768
+  
+  # Reserve tokens for response
+  reserve_for_response: 4096
+  
+  # Summarize when context exceeds
+  summarize_threshold: 28000
+
+# Tool calling
+tools:
+  # Enable native function calling
+  enabled: true
+  
+  # Tool definitions location
+  definitions_path: .qwen/tools.json
+  
+  # Validate tool outputs
+  validate_outputs: true
+
+# Rate limiting
+rate_limits:
+  # Tokens per minute (adjust based on your API tier)
+  tokens_per_minute: 60000
+  
+  # Requests per minute
+  requests_per_minute: 100
+  
+  # Backoff on 429
+  backoff:
+    initial: 1.0
+    max: 60.0
+    multiplier: 2.0
+
+# Logging
+logging:
+  # Log level for model interactions
+  level: INFO
+  
+  # Log file path
+  file: AI_Employee_Vault/Logs/qwen_model.log
+  
+  # Log token usage
+  log_tokens: true
+  
+  # Log tool calls
+  log_tools: true
