@@ -17,7 +17,10 @@ from pathlib import Path
 from datetime import datetime
 
 from src.config import config
-from src.actions.audit_logger import audit_logger
+from src.actions.audit_logger import get_audit_logger
+
+audit_logger = get_audit_logger()
+
 from src.watchers.gmail_watcher import GmailWatcher
 from src.watchers.whatsapp_watcher import WhatsAppWatcher
 from src.watchers.filesystem_watcher import FilesystemWatcher

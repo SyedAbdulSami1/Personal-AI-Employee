@@ -122,6 +122,11 @@ class Config:
         return True
 
     @property
+    def inbox_path(self) -> Path:
+        """Get Inbox folder path (for filesystem watcher drop folder)."""
+        return self.vault_path / "Inbox"
+
+    @property
     def needs_action_path(self) -> Path:
         """Get Needs_Action folder path."""
         return self.vault_path / "Needs_Action"
@@ -150,3 +155,7 @@ class Config:
     def plans_path(self) -> Path:
         """Get Plans folder path."""
         return self.vault_path / "Plans"
+
+
+# Global config instance - created once, imported everywhere
+config = Config()

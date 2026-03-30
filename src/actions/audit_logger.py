@@ -165,3 +165,11 @@ class AuditLogger:
             logger.error(f"Failed to read audit logs: {e}")
 
         return entries
+
+
+# Global audit logger instance - uses config.logs_path
+# Lazy initialization to avoid circular imports
+def get_audit_logger():
+    """Get the global AuditLogger instance."""
+    from src.config import config
+    return AuditLogger(config.logs_path)

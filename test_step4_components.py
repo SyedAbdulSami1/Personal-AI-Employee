@@ -139,7 +139,7 @@ def test_src_files():
     files = [
         "src/config.py",
         "src/orchestrator.py",
-        "src/watchdog.py",
+        "src/watchdog_monitor.py",
         "src/watchers/base_watcher.py",
         "src/watchers/gmail_watcher.py",
         "src/watchers/whatsapp_watcher.py",
