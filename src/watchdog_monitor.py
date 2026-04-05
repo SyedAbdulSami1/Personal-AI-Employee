@@ -11,9 +11,14 @@ import psutil
 import os
 
 from src.config import config
-from src.actions.audit_logger import audit_logger
 
 logger = logging.getLogger(__name__)
+
+
+def get_audit_logger():
+    """Get or create audit logger instance."""
+    from src.actions.audit_logger import AuditLogger
+    return AuditLogger(config.logs_path)
 
 
 class ProcessMonitor:
@@ -112,6 +117,7 @@ class ProcessMonitor:
         process_info["restart_count"] += 1
 
         # Log the restart attempt
+        audit_logger = get_audit_logger()
         audit_logger.log_action(
             action_type="process_restart_attempt",
             actor="watchdog_monitor",
@@ -215,6 +221,7 @@ If the problem persists, manual intervention may be required.
         """Log current system health to audit log."""
         health = self.get_system_health()
         if "error" not in health:
+            audit_logger = get_audit_logger()
             audit_logger.log_action(
                 action_type="system_health_check",
                 actor="watchdog_monitor",

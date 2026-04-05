@@ -5,6 +5,7 @@ Run watchers and orchestrator via PM2 or directly for testing.
 import logging
 import sys
 import argparse
+import time
 from pathlib import Path
 
 from src.config import Config
@@ -89,10 +90,28 @@ def run_watchdog(config: Config) -> None:
     Args:
         config: Config instance
     """
-    from src.watchdog import ProcessMonitor
+    from src.watchdog_monitor import ProcessMonitor
+    import signal
+    import sys
 
-    monitor = ProcessMonitor(config)
-    monitor.run()
+    monitor = ProcessMonitor()
+    
+    def signal_handler(sig, frame):
+        logger.info("Shutting down watchdog monitor...")
+        monitor.stop()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    monitor.start()
+    
+    # Keep main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        monitor.stop()
 
 
 def main():

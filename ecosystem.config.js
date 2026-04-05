@@ -2,11 +2,10 @@ module.exports = {
   apps: [
     {
       name: "orchestrator",
-      script: "python",
-      args: "src/orchestrator.py",
+      script: "uv",
+      args: "run python main.py orchestrator",
       cwd: __dirname,
       env: {
-        PYTHONPATH: "./src",
         DRY_RUN: "true",
         DEV_MODE: "true"
       },
@@ -20,11 +19,10 @@ module.exports = {
     },
     {
       name: "gmail_watcher",
-      script: "python",
-      args: "src/watchers/gmail_watcher.py",
+      script: "uv",
+      args: "run python main.py gmail",
       cwd: __dirname,
       env: {
-        PYTHONPATH: "./src",
         DRY_RUN: "true",
         DEV_MODE: "true"
       },
@@ -38,11 +36,10 @@ module.exports = {
     },
     {
       name: "whatsapp_watcher",
-      script: "python",
-      args: "src/watchers/whatsapp_watcher.py",
+      script: "uv",
+      args: "run python main.py whatsapp",
       cwd: __dirname,
       env: {
-        PYTHONPATH: "./src",
         DRY_RUN: "true",
         DEV_MODE: "true"
       },
@@ -56,11 +53,10 @@ module.exports = {
     },
     {
       name: "filesystem_watcher",
-      script: "python",
-      args: "src/watchers/filesystem_watcher.py",
+      script: "uv",
+      args: "run python main.py filesystem",
       cwd: __dirname,
       env: {
-        PYTHONPATH: "./src",
         DRY_RUN: "true",
         DEV_MODE: "true"
       },
@@ -74,11 +70,10 @@ module.exports = {
     },
     {
       name: "watchdog",
-      script: "python",
-      args: "src/watchdog.py",
+      script: "uv",
+      args: "run python main.py watchdog",
       cwd: __dirname,
       env: {
-        PYTHONPATH: "./src",
         DRY_RUN: "true",
         DEV_MODE: "true"
       },
