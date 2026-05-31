@@ -116,7 +116,7 @@ class FilesystemWatcher(BaseWatcher):
                 'id': file_id,
                 'type': 'file_drop',
                 'from': 'Inbox Drop',
-                'subject': f"New file: {src_path.name}",
+                'subject': f"New file - {src_path.name}",
                 'received': timestamp.isoformat(),
                 'priority': 'medium',
                 'content': f"File dropped in Inbox: {src_path.name}",
@@ -164,7 +164,7 @@ class FilesystemWatcher(BaseWatcher):
             content = f"""---
 type: file_drop
 from: {item['from']}
-subject: {item['subject']}
+subject: "{item['subject']}"
 received: {item['received']}
 priority: {item['priority']}
 status: pending
