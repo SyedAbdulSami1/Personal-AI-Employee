@@ -2,10 +2,15 @@
 Orchestrator — Master process that coordinates watchers and triggers Claude Code.
 Watches /Needs_Action/ for new tasks and /Approved/ for action approvals.
 """
+
+
+from groq import Groq
+import os
 import logging
 import subprocess
 import time
 import json
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -19,6 +24,11 @@ from .actions.social_poster import SocialMediaPoster
 from .actions.odoo_client import OdooClient
 from .actions.email_action import EmailAction
 from .actions.browser_action import BrowserAction
+
+import dotenv
+dotenv.load_dotenv(override=True)
+os.environ.pop("GOOGLE_API_KEY", None)
+api_key = os.getenv("GEMINI_API_KEY")
 
 logger = logging.getLogger(__name__)
 
@@ -191,26 +201,25 @@ You are the AI Employee agent. Process this new task from Needs_Action/.
             # Call Claude Code
             logger.info(f"[Orchestrator] Triggering Claude for: {action_file.name}")
 
-            result = subprocess.run(
-                ['claude', '--prompt', prompt],
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
+            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            response = client.chat.completions.create( 
+                 model="llama-3.1-8b-instant",
+                 messages=[{"role": "user", "content": prompt}]
+                )
 
-            if result.returncode == 0:
-                logger.info(f"[Orchestrator] Claude completed: {action_file.name}")
-            else:
-                logger.error(f"[Orchestrator] Claude failed: {result.stderr}")
+            # Write response to Plans/
+            response_file = self.config.plans_path / f"PLAN_{action_file.stem}.md"
+            response_file.parent.mkdir(parents=True, exist_ok=True)
+            response_file.write_text(response.choices[0].message.content, encoding='utf-8')
+            logger.info(f"[Orchestrator] Groq response saved: {response_file.name}")
 
             # Log the action
             self.audit_logger.log_action(
-                action_type="claude_triggered",
+                action_type="gemini_triggered",
                 actor="orchestrator",
                 target=str(action_file),
-                parameters={'stdout': result.stdout[:500] if result.stdout else ''},
-                result="success" if result.returncode == 0 else "failure",
-                error=result.stderr if result.returncode != 0 else None,
+                parameters={'response_file': str(response_file)},
+                result="success",
                 dry_run=self.config.dry_run
             )
 

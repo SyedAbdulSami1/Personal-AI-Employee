@@ -9,11 +9,19 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src.actions.audit_logger import audit_logger
-from src.actions.rate_limiter import (
-    email_rate_limiter,
-    payment_rate_limiter,
-    message_rate_limiter,
-)
+from src.actions.rate_limiter import rate_limiter
+def get_rate_limiter(self, action_type: str):
+    return rate_limiter
+
+def check_rate_limit(self, action_type: str) -> bool:
+    action_map = {
+        'email': 'email_send',
+        'payment': 'payment',
+        'message': 'whatsapp_send',
+    }
+    mapped = action_map.get(action_type, action_type)
+    return rate_limiter.check_and_increment(mapped)
+
 from src.config import config
 
 logger = logging.getLogger(__name__)
