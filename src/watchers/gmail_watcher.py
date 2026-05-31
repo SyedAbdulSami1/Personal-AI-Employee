@@ -45,14 +45,13 @@ class GmailWatcher(BaseWatcher):
             import os
 
             SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
-            TOKEN_FILE = self.vault_path / "Logs" / "gmail_token.pickle"
+            TOKEN_FILE = Path("token.json")
 
             creds = None
 
             # Load existing token
             if os.path.exists(TOKEN_FILE):
-                with open(TOKEN_FILE, 'rb') as token:
-                    creds = pickle.load(token)
+                creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
 
             # Refresh or get new credentials
             if not creds or not creds.valid:
@@ -70,8 +69,8 @@ class GmailWatcher(BaseWatcher):
 
                 # Save token
                 TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with open(TOKEN_FILE, 'wb') as token:
-                    pickle.dump(creds, token)
+                with open(TOKEN_FILE, 'w') as token:
+                    token.write(creds.to_json())
 
             self._service = build('gmail', 'v1', credentials=creds)
             logger.info("Gmail API service initialized")

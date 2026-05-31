@@ -128,6 +128,40 @@ async def read_dashboard():
         return dashboard_path.read_text(encoding="utf-8")
     return "<h1>Dashboard file not found</h1>"
 
+@app.post("/api/chat")
+async def chat(request: Request):
+    """AI Chat endpoint using Groq."""
+    import os
+    from groq import Groq
+    import dotenv
+    dotenv.load_dotenv(override=True)
+    
+    data = await request.json()
+    user_message = data.get("message", "")
+    
+    # Get inbox summary for context
+    inbox_tasks = get_folder_contents("Needs_Action")
+    inbox_summary = f"Inbox mein {len(inbox_tasks)} tasks hain."
+    
+    prompt = f"""Tum ek Personal AI Employee ho. Urdu aur English mix mein jawab do (Hinglish).
+    
+Current inbox: {inbox_summary}
+
+User ka message: {user_message}
+
+Helpful aur concise jawab do."""
+
+    try:
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500
+        )
+        return {"response": response.choices[0].message.content}
+    except Exception as e:
+        return {"response": f"Error: {str(e)}"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
