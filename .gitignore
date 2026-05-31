@@ -80,3 +80,7 @@ payment_tokens/
 
 # Ralph Wiggum counters
 .ralph_counter
+token.json
+credentials.json
+gmail_auth.py
+dashboard_backup.html
