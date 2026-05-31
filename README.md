@@ -2,7 +2,7 @@
 
 > **Silver Tier Hackathon Project** — Autonomous AI agent that works as your digital employee, reading tasks from WhatsApp/Gmail/File drops, planning actions, requesting human approval, and executing via MCP servers.
 
-**Target**: 20-30 hours implementation | **Status**: In Development | **Brain**: Qwen Code
+**Target**: 20-30 hours implementation | **Status**: In Development | **GROQ_API_KEY
 
 ---
 
@@ -10,7 +10,7 @@
 
 Your AI Employee:
 1. **Watches** Gmail, WhatsApp, and filesystem for incoming tasks
-2. **Plans** actions using Qwen reasoning (creates PLAN_*.md files)
+2. **Plans** actions using Groq (LLaMA) reasoning (creates PLAN_*.md files)
 3. **Requests Approval** for payments, emails, social posts (HITL workflow)
 4. **Executes** approved actions via MCP servers (email, browser, filesystem)
 5. **Logs Everything** in JSON audit trails (90-day retention)
@@ -32,15 +32,15 @@ All coordination happens through **Obsidian markdown files** in a local vault �
 ┌─────────────────────────────────────────────────────────────────┐
 │                    AI_Employee_Vault/                           │
 │  Needs_Action/ ← Watchers write here                            │
-│  Plans/        ← Qwen writes PLAN_*.md here                     │
-│  Pending_Approval/ ← Qwen writes approval requests              │
+│  Plans/        ← Groq (LLaMA) writes PLAN_*.md here                     │
+│  Pending_Approval/ ← Groq (LLaMA) writes approval requests              │
 │  Approved/     ← User moves here = GO                           │
 │  Done/         ← Completed tasks (Ralph Wiggum checks)          │
 └─────────────────────────────────────────────────────────────────┘
          │                       │                        │
          ▼                       ▼                        ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Orchestrator   │     │  Qwen Reasoning  │     │  MCP Servers    │
+│  Orchestrator   │     │  Groq (LLaMA) Reasoning  │     │  MCP Servers    │
 │  (master loop)  │────▶│  (plan & decide) │────▶│  email/browser  │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
@@ -54,7 +54,7 @@ project-root/
 ├── AI_Employee_Vault/          # Obsidian vault (single source of truth)
 │   ├── Inbox/                  # Manual file drops
 │   ├── Needs_Action/           # Watchers write here
-│   ├── Plans/                  # Qwen writes plans here
+│   ├── Plans/                  # Groq (LLaMA) writes plans here
 │   ├── Pending_Approval/       # Approval requests land here
 │   ├── Approved/               # User approves → triggers MCP
 │   ├── Done/                   # Completed tasks
@@ -80,10 +80,10 @@ project-root/
 │   ├── watchdog_monitor.py     # Restarts dead watchers
 │   └── briefing_generator.py   # Sunday 11PM briefing
 │
-├── .qwen/
+├── .claude/
 │   ├── hooks/stop.py           # Ralph Wiggum stop-hook
 │   ├── mcp.json                # MCP server config
-│   └── model_config.yaml       # Qwen settings
+│   └── model_config.yaml       # Groq (LLaMA) settings
 │
 ├── .env                        # Secrets (NEVER commit)
 ├── .gitignore                  # Created FIRST
@@ -127,8 +127,8 @@ DRY_RUN=true                    # Keep true until tested
 VAULT_PATH=./AI_Employee_Vault
 GMAIL_CREDENTIALS=./credentials.json
 WHATSAPP_SESSION_PATH=./whatsapp_session
-QWEN_API_KEY=ollama             # Use local Qwen (FREE)
-QWEN_BASE_URL=http://localhost:11434/v1
+GROQ_API_KEY=ollama             # Use local Groq (LLaMA) (FREE)
+GROQ_BASE_URL=http://localhost:11434/v1
 ```
 
 ### 3. Create Vault Structure
@@ -138,7 +138,7 @@ mkdir -p AI_Employee_Vault/{Inbox,Needs_Action,Plans,Pending_Approval,Approved,R
 ```
 
 Create these files in `AI_Employee_Vault/`:
-- `Dashboard.md` (see template in QWEN.md)
+- `Dashboard.md` (see template in CLAUDE.md)
 - `Company_Handbook.md` (10 rules)
 - `Business_Goals.md` (Q1 targets)
 
@@ -167,12 +167,12 @@ pm2 logs
 |---------|-----------|-------|
 | **Gmail API** | Free with Google Cloud | [Guide](https://developers.google.com/gmail/api/quickstart) |
 | **WhatsApp** | 100% Free (Web via Playwright) | No API needed |
-| **Qwen Model** | Ollama local (100% free) | `ollama run qwen2.5:7b` |
-| **Qwen API** | 1M tokens/month | [DashScope](https://dashscope.console.aliyun.com/) |
+| **Groq (LLaMA) Model** | Ollama local (100% free) | `ollama run llama3.1:8b` |
+| **Groq (LLaMA) API** | 1M tokens/month | [DashScope](https://dashscope.console.aliyun.com/) |
 | **Filesystem** | Built-in (free) | No setup |
 | **Browser MCP** | Free (Playwright) | `npx @anthropic/browser-mcp` |
 
-**Recommended**: Use Ollama local Qwen + Gmail API + WhatsApp Web = **100% FREE stack**
+**Recommended**: Use Ollama local Groq (LLaMA) + Gmail API + WhatsApp Web = **100% FREE stack**
 
 ---
 
@@ -197,7 +197,7 @@ watcher: GmailWatcher | WhatsAppWatcher | FilesystemWatcher
 - [ ] Action 2
 ```
 
-### SCHEMA B: Plan (Qwen writes)
+### SCHEMA B: Plan (Groq (LLaMA) writes)
 
 ```yaml
 ---
@@ -244,10 +244,10 @@ plan_ref: <Plan filename>
 1. WhatsAppWatcher detects message (30s interval)
    → Creates: Needs_Action/WHATSAPP_client_2026-03-31.md
 
-2. Orchestrator triggers Qwen
+2. Orchestrator triggers Groq (LLaMA)
    → Creates: Plans/PLAN_invoice_client.md
 
-3. Qwen determines email requires approval
+3. Groq (LLaMA) determines email requires approval
    → Creates: Pending_Approval/EMAIL_invoice_client.md
 
 4. You review and move file to Approved/
@@ -366,8 +366,8 @@ Check `AI_Employee_Vault/Dashboard.md` for:
 | **Python not found** | Install 3.13+, add to PATH |
 | **Gmail 403** | Enable Gmail API in Google Cloud Console |
 | **WhatsApp session lost** | Delete session folder, re-scan QR |
-| **MCP won't connect** | Check Node.js paths in `.qwen/mcp.json` |
-| **Ralph counter stuck** | Verify `.qwen/hooks/stop.py` config |
+| **MCP won't connect** | Check Node.js paths in `.claude/mcp.json` |
+| **Ralph counter stuck** | Verify `.claude/hooks/stop.py` config |
 | **Vault permission error** | Run as administrator (Windows) |
 
 ---
@@ -376,7 +376,7 @@ Check `AI_Employee_Vault/Dashboard.md` for:
 
 | File | Purpose |
 |------|---------|
-| `QWEN.md` | Project rules (overrides global) |
+| `CLAUDE.md` | Project rules (overrides global) |
 | `SPEC.md` | Technical specifications (8 sections) |
 | `PLAN.md` | Implementation plan (phases 0-8) |
 | `CONSTITUTION.md` | Core principles |
@@ -414,6 +414,8 @@ This is a hackathon project. Key features to add:
 
 ---
 
-**Built with**: Qwen Code + Obsidian + Python + MCP + PM2
+**Built with**: Groq LLaMA + Claude Code
+
+ + Obsidian + Python + MCP + PM2
 
 *"Bismillah, let's build."* 🚀
