@@ -128,35 +128,84 @@ async def read_dashboard():
         return dashboard_path.read_text(encoding="utf-8")
     return "<h1>Dashboard file not found</h1>"
 
+
 @app.post("/api/chat")
 async def chat(request: Request):
-    """AI Chat endpoint using Groq."""
+    """AI Chat with Skills system."""
     import os
     from groq import Groq
     import dotenv
     dotenv.load_dotenv(override=True)
     
     data = await request.json()
-    user_message = data.get("message", "")
+    user_message = data.get("message", "").lower()
     
-    # Get inbox summary for context
+    # SKILL: Email Summary - No LLM needed
+    if any(word in user_message for word in ["email", "inbox", "summary", "summarize"]):
+        tasks = get_folder_contents("Needs_Action")
+        emails = [t for t in tasks if t.get("metadata", {}).get("type") == "email"]
+        high = [e for e in emails if e.get("metadata", {}).get("priority") == "high"]
+        medium = [e for e in emails if e.get("metadata", {}).get("priority") == "medium"]
+        low = [e for e in emails if e.get("metadata", {}).get("priority") == "low"]
+        
+        response = f"""📧 **Email Summary** (No AI needed — direct skill)
+
+**High Priority:** {len(high)}
+{chr(10).join([f"• {e['metadata'].get('from','?')} — {e['metadata'].get('subject','?')}" for e in high[:3]])}
+
+**Medium Priority:** {len(medium)}
+{chr(10).join([f"• {e['metadata'].get('from','?')} — {e['metadata'].get('subject','?')}" for e in medium[:3]])}
+
+**Low Priority:** {len(low)}
+{chr(10).join([f"• {e['metadata'].get('from','?')} — {e['metadata'].get('subject','?')}" for e in low[:3]])}
+
+**Total Emails:** {len(emails)}"""
+        return {"response": response}
+    
+    # SKILL: Task Organizer - No LLM needed
+    if any(word in user_message for word in ["task", "organize", "priority", "sort"]):
+        tasks = get_folder_contents("Needs_Action")
+        high = [t for t in tasks if t.get("metadata", {}).get("priority") == "high"]
+        medium = [t for t in tasks if t.get("metadata", {}).get("priority") == "medium"]
+        low = [t for t in tasks if t.get("metadata", {}).get("priority") == "low"]
+        emails = [t for t in tasks if t.get("metadata", {}).get("type") == "email"]
+        whatsapps = [t for t in tasks if t.get("metadata", {}).get("type") == "whatsapp"]
+        files = [t for t in tasks if t.get("metadata", {}).get("type") == "file_drop"]
+        
+        response = f"""📋 **Task Summary** (Skill — no LLM)
+
+**Total:** {len(tasks)}
+🔴 High: {len(high)} | 🟡 Medium: {len(medium)} | ⚪ Low: {len(low)}
+
+**By Type:**
+📧 Email: {len(emails)}
+💬 WhatsApp: {len(whatsapps)}
+📁 Files: {len(files)}"""
+        return {"response": response}
+    
+    # SKILL: Invoice - No LLM needed
+    if any(word in user_message for word in ["invoice", "bill", "payment"]):
+        response = """📄 **Invoice Generator** (Skill)
+
+Invoice banane ke liye yeh likhو:
+"Client [naam] ka [amount] ka invoice banao"
+
+Example: "Client Ahmed ka 50000 ka invoice banao" """
+        return {"response": response}
+
+    # Fallback: LLM only for complex/unknown requests
     inbox_tasks = get_folder_contents("Needs_Action")
-    inbox_summary = f"Inbox mein {len(inbox_tasks)} tasks hain."
-    
-    prompt = f"""Tum ek Personal AI Employee ho. Urdu aur English mix mein jawab do (Hinglish).
-    
-Current inbox: {inbox_summary}
-
-User ka message: {user_message}
-
-Helpful aur concise jawab do."""
+    prompt = f"""Tum ek Personal AI Employee ho. Urdu/English mix mein jawab do.
+Current inbox: {len(inbox_tasks)} tasks.
+User: {user_message}
+Short aur helpful jawab do."""
 
     try:
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500
+            max_tokens=300
         )
         return {"response": response.choices[0].message.content}
     except Exception as e:
