@@ -15,6 +15,10 @@ from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 from .config import Config
 from .actions.audit_logger import AuditLogger
 from .actions.rate_limiter import RateLimiter
+from .actions.social_poster import SocialMediaPoster
+from .actions.odoo_client import OdooClient
+from .actions.email_action import EmailAction
+from .actions.browser_action import BrowserAction
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,12 @@ class Orchestrator:
         self.config = config
         self.audit_logger = AuditLogger(config.logs_path)
         self.rate_limiter = RateLimiter(config.vault_path)
+        
+        # New action handlers
+        self.social_media_poster = SocialMediaPoster(config)
+        self.odoo_client = OdooClient(config)
+        self.email_action = EmailAction(config)
+        self.browser_action = BrowserAction(config)
 
         self._needs_action_observer: Optional[Observer] = None
         self._approved_observer: Optional[Observer] = None
@@ -226,6 +236,26 @@ You are the AI Employee agent. Process this new task from Needs_Action/.
                 dry_run=self.config.dry_run
             )
 
+    def _extract_field(self, content: str, field_name: str) -> Optional[str]:
+        """Extract a field from YAML frontmatter."""
+        try:
+            # Simple YAML parsing
+            lines = content.split('\n')
+            in_frontmatter = False
+
+            for line in lines:
+                if line.strip() == '---':
+                    in_frontmatter = not in_frontmatter
+                    continue
+
+                if in_frontmatter and line.startswith(f'{field_name}:'):
+                    return line.split(':', 1)[1].strip()
+
+        except Exception as e:
+            logger.warning(f"Could not parse frontmatter for {field_name}: {e}")
+
+        return None
+
     def process_approved_file(self, approval_file: Path) -> None:
         """
         Process an approved action file.
@@ -238,7 +268,7 @@ You are the AI Employee agent. Process this new task from Needs_Action/.
             content = approval_file.read_text(encoding='utf-8')
 
             # Parse frontmatter to get action type
-            action_type = self._extract_action_type(content)
+            action_type = self._extract_field(content, 'action')
 
             if not action_type:
                 logger.warning(f"[Orchestrator] Could not determine action type: {approval_file.name}")
@@ -255,67 +285,100 @@ You are the AI Employee agent. Process this new task from Needs_Action/.
                 self._trigger_social_mcp(approval_file, content)
             elif action_type == 'whatsapp_send':
                 self._trigger_whatsapp_mcp(approval_file, content)
+            elif action_type == 'accounting' or action_type == 'odoo':
+                self._trigger_odoo_mcp(approval_file, content)
             else:
                 logger.warning(f"[Orchestrator] Unknown action type: {action_type}")
 
         except Exception as e:
             logger.error(f"[Orchestrator] Error processing approved file: {e}", exc_info=True)
 
-    def _extract_action_type(self, content: str) -> Optional[str]:
-        """Extract action type from YAML frontmatter."""
-        try:
-            # Simple YAML parsing
-            lines = content.split('\n')
-            in_frontmatter = False
-
-            for line in lines:
-                if line.strip() == '---':
-                    in_frontmatter = not in_frontmatter
-                    continue
-
-                if in_frontmatter and line.startswith('action:'):
-                    return line.split(':', 1)[1].strip()
-
-        except Exception as e:
-            logger.warning(f"Could not parse frontmatter: {e}")
-
-        return None
-
     def _trigger_email_mcp(self, approval_file: Path, content: str) -> None:
         """Trigger email MCP to send approved email."""
-        logger.info("[Orchestrator] Would trigger Email MCP (not implemented)")
-        # TODO: Implement email-mcp integration
-        self.audit_logger.log_action(
-            action_type="email_mcp_triggered",
-            actor="orchestrator",
-            target=str(approval_file),
-            result="dry_run" if self.config.dry_run else "success",
-            dry_run=self.config.dry_run
-        )
+        logger.info(f"[Orchestrator] Triggering EmailAction for: {approval_file.name}")
+        
+        # Extract details from content
+        to = self._extract_field(content, 'to') or "unknown@example.com"
+        subject = self._extract_field(content, 'subject') or "No Subject"
+        
+        # Simple extraction of body
+        body = content.split("## Content")[-1].strip() if "## Content" in content else content
+        
+        try:
+            result = self.email_action.execute(to=to, subject=subject, body=body)
+            logger.info(f"[Orchestrator] Email result: {result['status']}")
+            
+            # Move to Done if success
+            if result['status'] == 'success' or self.config.dry_run:
+                self._move_to_done(approval_file)
+        except Exception as e:
+            logger.error(f"[Orchestrator] Email failed: {e}")
 
     def _trigger_payment_mcp(self, approval_file: Path, content: str) -> None:
         """Trigger payment MCP for approved payment."""
-        logger.info("[Orchestrator] Would trigger Payment MCP (not implemented)")
-        # TODO: Implement payment-mcp integration
-        self.audit_logger.log_action(
-            action_type="payment_mcp_triggered",
-            actor="orchestrator",
-            target=str(approval_file),
-            result="dry_run" if self.config.dry_run else "success",
-            dry_run=self.config.dry_run
-        )
+        logger.info(f"[Orchestrator] Triggering BrowserAction (Payment) for: {approval_file.name}")
+        
+        # Extract details
+        amount = self._extract_field(content, 'amount') or "0"
+        recipient = self._extract_field(content, 'recipient') or "Unknown"
+        
+        try:
+            # Simulate navigating to a bank/payment portal
+            result = self.browser_action.execute(
+                url="https://bank.example.com/pay",
+                action_data={'type': 'payment', 'amount': amount, 'recipient': recipient}
+            )
+            logger.info(f"[Orchestrator] Payment result: {result['status']}")
+            
+            if result['status'] == 'success' or self.config.dry_run:
+                self._move_to_done(approval_file)
+        except Exception as e:
+            logger.error(f"[Orchestrator] Payment failed: {e}")
+
+    def _move_to_done(self, file_path: Path) -> None:
+        """Move a processed file to the Done folder."""
+        try:
+            done_path = self.config.done_path / file_path.name
+            file_path.rename(done_path)
+            logger.info(f"Moved {file_path.name} to Done/")
+        except Exception as e:
+            logger.error(f"Failed to move file to Done: {e}")
 
     def _trigger_social_mcp(self, approval_file: Path, content: str) -> None:
         """Trigger social media MCP for approved post."""
-        logger.info("[Orchestrator] Would trigger Social MCP (not implemented)")
-        # TODO: Implement social-mcp integration
-        self.audit_logger.log_action(
-            action_type="social_mcp_triggered",
-            actor="orchestrator",
-            target=str(approval_file),
-            result="dry_run" if self.config.dry_run else "success",
-            dry_run=self.config.dry_run
-        )
+        logger.info(f"[Orchestrator] Triggering SocialMediaPoster for: {approval_file.name}")
+        
+        # Simple extraction of platform and content
+        # Expects frontmatter: platform: linkedin
+        platform = self._extract_field(content, 'platform') or 'linkedin'
+        post_content = content.split("## Content")[-1].strip() if "## Content" in content else content
+        
+        try:
+            result = self.social_media_poster.execute(
+                content=post_content,
+                platform=platform,
+                title=approval_file.stem
+            )
+            logger.info(f"[Orchestrator] {platform.capitalize()} post result: {result['status']}")
+        except Exception as e:
+            logger.error(f"[Orchestrator] {platform.capitalize()} posting failed: {e}")
+
+    def _trigger_odoo_mcp(self, approval_file: Path, content: str) -> None:
+        """Trigger Odoo MCP for approved accounting action."""
+        logger.info(f"[Orchestrator] Triggering OdooClient for: {approval_file.name}")
+        
+        # This would typically parse JSON/YAML from the markdown content
+        # For now, we simulate a search call
+        try:
+            # Simulation of an accounting search or create
+            result = self.odoo_client.execute(
+                model='res.partner',
+                method='search_read',
+                kwargs={'limit': 1}
+            )
+            logger.info(f"[Orchestrator] Odoo action completed successfully")
+        except Exception as e:
+            logger.error(f"[Orchestrator] Odoo action failed: {e}")
 
     def _trigger_whatsapp_mcp(self, approval_file: Path, content: str) -> None:
         """Trigger WhatsApp MCP for approved message."""

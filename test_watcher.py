@@ -23,7 +23,7 @@ def main():
     logger.info(f"Inbox path: {config.inbox_path}")
     logger.info(f"Inbox exists: {config.inbox_path.exists()}")
     
-    watcher = FilesystemWatcher(config)
+    watcher = FilesystemWatcher(config, config.vault_path)
     logger.info("FilesystemWatcher created")
     
     test_file = config.inbox_path / 'test_document.pdf'
@@ -31,7 +31,7 @@ def main():
     
     if test_file.exists():
         logger.info("Processing test file...")
-        watcher._process_file_drop(str(test_file))
+        watcher.process_file(test_file)
         logger.info("File processed")
     
     # List Needs_Action contents

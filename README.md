@@ -307,7 +307,6 @@ All actions log what they **would** do without executing. Set to `false` only af
 ---
 
 ## 📊 Monitoring
-
 ### PM2 Commands
 
 ```bash
@@ -318,7 +317,38 @@ pm2 save                    # Persist process list
 pm2 startup                 # Auto-start on boot
 ```
 
-### Dashboard
+---
+
+## 📊 Interactive Dashboard (New)
+
+The project now includes a professional, interactive Kanban-style dashboard for task management.
+
+### 1. Prerequisites
+Ensure you have the required dashboard dependencies:
+```bash
+pip install fastapi uvicorn pyyaml
+```
+
+### 2. Start the Dashboard Server
+Run the FastAPI backend server:
+```bash
+uvicorn src.server:app --reload --port 8000
+```
+
+### 3. Access the Dashboard
+Open your browser and navigate to:
+**`http://localhost:8000`**
+
+### 🎯 Key Features:
+- **Kanban Board**: Manage Inbox, Pending Approval, and Done tasks visually.
+- **One-Click Actions**: Approve or Reject plans directly from the UI.
+- **Real-time Status**: Monitor system health and mode (DRY_RUN/PRODUCTION).
+- **Toast Notifications**: Get instant feedback on all operations.
+- **Auto-Refresh**: Column data updates every 15 seconds automatically.
+
+---
+
+## Dashboard
 
 Check `AI_Employee_Vault/Dashboard.md` for:
 - Watcher status (✅/❌)

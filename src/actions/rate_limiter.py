@@ -186,4 +186,22 @@ class RateLimiter:
                 logger.error(f"Rate limit wait exceeded for {action_type} (max_wait={max_wait}s)")
                 return False
 
-            time.sleep(poll_interval)
+# Global rate limiter instance
+# Note: Initialized with config.vault_path
+from src.config import config
+rate_limiter = RateLimiter(config.vault_path)
+
+
+def initialize_rate_limiters(vault_path: Path) -> RateLimiter:
+    """
+    Initialize global rate limiters for all action types.
+
+    Args:
+        vault_path: Path to AI_Employee_Vault directory
+
+    Returns:
+        The initialized RateLimiter instance
+    """
+    global rate_limiter
+    rate_limiter = RateLimiter(vault_path)
+    return rate_limiter

@@ -132,6 +132,11 @@ class AuditLogger:
 
         return entries
 
+    def get_recent_actions(self, limit: int = 10) -> list:
+        """Get the most recent actions logged today."""
+        logs = self.get_today_logs()
+        return logs[-limit:] if logs else []
+
     def get_actions_by_type(self, action_type: str, date: Optional[str] = None) -> list:
         """
         Get all actions of a specific type.
@@ -167,9 +172,7 @@ class AuditLogger:
         return entries
 
 
-# Global audit logger instance - uses config.logs_path
-# Lazy initialization to avoid circular imports
-def get_audit_logger():
-    """Get the global AuditLogger instance."""
-    from src.config import config
-    return AuditLogger(config.logs_path)
+# Export default instance
+# Note: Initialized with config.logs_path
+from src.config import config
+audit_logger = AuditLogger(config.logs_path)

@@ -30,28 +30,28 @@ def main():
     # Test GmailWatcher
     logger.info("\n1. Testing GmailWatcher...")
     try:
-        gmail_watcher = GmailWatcher(config)
+        gmail_watcher = GmailWatcher(config, config.vault_path)
         logger.info(f"   ✓ GmailWatcher created")
-        logger.info(f"   Interval: {gmail_watcher.get_interval()}s")
+        logger.info(f"   Interval: {gmail_watcher.interval}s")
     except Exception as e:
         logger.error(f"   ✗ GmailWatcher failed: {e}")
     
     # Test WhatsAppWatcher
     logger.info("\n2. Testing WhatsAppWatcher...")
     try:
-        whatsapp_watcher = WhatsAppWatcher(config)
+        whatsapp_watcher = WhatsAppWatcher(config, config.vault_path)
         logger.info(f"   ✓ WhatsAppWatcher created")
-        logger.info(f"   Interval: {whatsapp_watcher.get_interval()}s")
-        logger.info(f"   Keywords: {whatsapp_watcher.URGENT_KEYWORDS}")
+        logger.info(f"   Interval: {whatsapp_watcher.interval}s")
+        logger.info(f"   Keywords: {whatsapp_watcher.keywords}")
     except Exception as e:
         logger.error(f"   ✗ WhatsAppWatcher failed: {e}")
     
     # Test FilesystemWatcher
     logger.info("\n3. Testing FilesystemWatcher...")
     try:
-        filesystem_watcher = FilesystemWatcher(config)
+        filesystem_watcher = FilesystemWatcher(config, config.vault_path)
         logger.info(f"   ✓ FilesystemWatcher created")
-        logger.info(f"   Interval: {filesystem_watcher.get_interval()}s")
+        logger.info(f"   Interval: {filesystem_watcher.interval}s")
     except Exception as e:
         logger.error(f"   ✗ FilesystemWatcher failed: {e}")
     
